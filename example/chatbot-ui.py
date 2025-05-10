@@ -178,47 +178,31 @@ def render_top_area(status_text, emoji_text, font_path, image_width,
 
     return image,top_height
 
+def render_scroll_info_area(info_text, font_path, scroll_width, scroll_height, info_font_size=28):
 
-def render_scroll_status_page(status_text, emoji_text, info_text, font_path, image_size,
-                             status_font_size=32, emoji_font_size=40, info_font_size=28,
-                             scroll_font_threshold=10):
-    width, height = image_size
-    image = Image.new("RGBA", image_size, (0, 0, 0, 255))
-    draw = ImageDraw.Draw(image)
-    status_font = ImageFont.truetype(font_path, status_font_size)
-    emoji_font = ImageFont.truetype(font_path, emoji_font_size)
+
     info_font = ImageFont.truetype(font_path, info_font_size)
 
-    # Draw status (centered)
-    status_bbox = status_font.getbbox(status_text)
-    status_w = status_bbox[2] - status_bbox[0]
-    draw_mixed_text(draw, image, status_text, status_font, ((width - status_w) // 2, 0))
+    # 准备换行绘制
+    dummy_draw = ImageDraw.Draw(Image.new("RGB", (scroll_width, 1000)))
+    lines = wrap_text(dummy_draw, info_text, info_font, scroll_width)
 
-    # Draw emoji (centered)
-    emoji_bbox = emoji_font.getbbox(emoji_text)
-    emoji_w = emoji_bbox[2] - emoji_bbox[0]
-    draw_mixed_text(draw, image, emoji_text, emoji_font, ((width - emoji_w) // 2, status_font_size + 8))
-
-    # Define scroll area
-    scroll_height = height - scroll_top
-
-    # Create info scroll image
-    dummy_draw = ImageDraw.Draw(Image.new("RGB", (width, 1000)))
-    lines = wrap_text(dummy_draw, info_text, info_font, width)
     ascent, descent = info_font.getmetrics()
-    line_height = ascent + descent # 这里 +4 是行距 padding
-    total_height = (len(lines)+1) * line_height
+    line_height = ascent + descent
 
-    scroll_img = Image.new("RGBA", (width, total_height), (0, 0, 0, 255))
-    scroll_draw = ImageDraw.Draw(scroll_img)
+    # 额外添加一行高度作为底部 padding
+    total_content_height = (len(lines) + 1) * line_height
+    output_height = max(scroll_height, total_content_height)
+
+    # 创建输出图像
+    scroll_img = Image.new("RGBA", (scroll_width, output_height), (0, 0, 0, 255))
+    draw = ImageDraw.Draw(scroll_img)
+
+    # 绘制每一行文本
     for i, line in enumerate(lines):
-        draw_mixed_text(scroll_draw, scroll_img, line, info_font, (0, i * line_height))
+        draw_mixed_text(draw, scroll_img, line, info_font, (0, i * line_height))
 
-    if total_height > scroll_height or info_font_size < scroll_font_threshold:
-        return image, scroll_img, True
-    else:
-        image.paste(scroll_img, (0, scroll_top))
-        return image, None, False
+    return scroll_img
 
 def scroll_info_area(top_image: Image.Image, info_scroll_img: Image.Image, echoview,
                      scroll_speed=2, delay=0.05, stop_event=None):
@@ -241,32 +225,7 @@ def scroll_info_area(top_image: Image.Image, info_scroll_img: Image.Image, echov
         while not stop_event.is_set():
             time.sleep(delay)
         return
-        # 滚动到底后仍需刷新显示以反映 top_image 的变化
-        # while not stop_event.is_set():
-        #     frame = Image.new("RGBA", (screen_width, screen_height), (0, 0, 0, 255))
-        #     frame.paste(top_image, (0, 0))
-        #     crop = info_scroll_img.crop((0, scroll_img_height - scroll_height, screen_width, scroll_img_height))
-        #     frame.paste(crop, (0, scroll_top))
-        #     rgb565_data = image_to_rgb565(frame, screen_width, screen_height)
-        #     echoview.draw_image(0, 0, screen_width, screen_height, rgb565_data)
-        #     time.sleep(1)
-        #     print("重绘页面")
 
-
-
-        # time.sleep(20)
-
-        # for y_offset in range(max(0, scroll_img_height - scroll_height), -1, -scroll_speed):
-        #     if stop_event.is_set():
-        #         return
-        #     frame = base_image.copy()
-        #     crop = info_scroll_img.crop((0, y_offset, screen_width, min(scroll_img_height, y_offset + scroll_height)))
-        #     frame.paste(crop, (0, scroll_top))
-        #     rgb565_data = image_to_rgb565(frame, screen_width, screen_height)
-        #     echoview.draw_image(0, 0, screen_width, screen_height, rgb565_data)
-        #     time.sleep(delay)
-
-        # time.sleep(5)
 
 # 全局变量分别保存当前状态、emoji、滚动文本以及滚动线程和控制事件
 current_status = ""
@@ -303,25 +262,21 @@ def update_display(echoview, font_path, status=None, emoji=None, text=None, scro
             scroll_thread.join()
         scroll_stop_event = threading.Event()
 
-        _, scroll_img, need_scroll  = render_scroll_status_page(
-            status_text="", emoji_text="", info_text=current_text, font_path=font_path,
-            image_size=(echoview.LCD_WIDTH, echoview.LCD_HEIGHT)
+        scroll_img  = render_scroll_info_area(
+                info_text=current_text,
+                font_path=font_path,
+                scroll_width=echoview.LCD_WIDTH,
+                scroll_height=echoview.LCD_HEIGHT - scroll_top
         )
 
-        if need_scroll:
-            scroll_thread = threading.Thread(
-                target=scroll_info_area,
-                args=(top_image, scroll_img, echoview),
-                kwargs={'scroll_speed': scroll_speed, 'delay': 0.05, 'stop_event': scroll_stop_event}
-            )
-            scroll_thread.start()
-        else:
-            # 无需滚动，直接渲染整图
-            full_image = Image.new("RGBA", (echoview.LCD_WIDTH, echoview.LCD_HEIGHT), (0, 0, 0, 255))
-            full_image.paste(top_image, (0, 0))
-            full_image.paste(scroll_img, (0, scroll_top))
-            rgb565_data = image_to_rgb565(full_image, echoview.LCD_WIDTH, echoview.LCD_HEIGHT)
-            echoview.draw_image(0, 0, echoview.LCD_WIDTH, echoview.LCD_HEIGHT, rgb565_data)
+
+        scroll_thread = threading.Thread(
+            target=scroll_info_area,
+            args=(top_image, scroll_img, echoview),
+            kwargs={'scroll_speed': scroll_speed, 'delay': 0.05, 'stop_event': scroll_stop_event}
+        )
+        scroll_thread.start()
+       
 
     elif top_changed and scroll_thread is None:
         # 没有滚动线程，也没新文本，只需要更新 top 部分
@@ -352,44 +307,50 @@ def handle_client(client_socket, addr, echoview, font_path):
     print(f"[Socket] 客户端 {addr} 已连接")
     clients[addr] = client_socket
     try:
+        buffer = ""
         while True:
             data = client_socket.recv(4096).decode("utf-8")
             if not data:
                 break
-            print(f"[Socket - {addr}] 接收到数据: {data}")
-            try:
-                content = json.loads(data)
-                status = content.get("status", None)
-                emoji = content.get("emoji", None)
-                text = content.get("text", None)
-                rgbled = content.get("RGB", None)
-                brightness = content.get("brightness", None)
-                scroll_speed = content.get("scroll_speed", 2)
+            buffer += data
+            # print(f"[Socket - {addr}] 当前缓存 buffer: {repr(buffer)}")
+            while "\n" in buffer:
+                line, buffer = buffer.split("\n", 1)
+                if not line.strip():
+                    continue
+                        
+                print(f"[Socket - {addr}] 接收到数据: {line}")
+                try:
+                    content = json.loads(line)
+                    status = content.get("status", None)
+                    emoji = content.get("emoji", None)
+                    text = content.get("text", None)
+                    rgbled = content.get("RGB", None)
+                    brightness = content.get("brightness", None)
+                    scroll_speed = content.get("scroll_speed", 2)
+                    response_to_client = content.get("response", None)
 
-                response_to_client = content.get("response", None)
+                    if rgbled:
+                        rgb255_tuple = get_rgb255_from_any(rgbled)
+                        echoview.set_rgb(*rgb255_tuple)
+                    if brightness:
+                        echoview.set_backlight(brightness)
+                    if (text is not None) or (status is not None) or (emoji is not None):
+                        update_display(echoview, font_path, status=status, emoji=emoji, text=text, scroll_speed=scroll_speed)
 
-                if rgbled:
-                    rgb255_tuple = get_rgb255_from_any(rgbled)
-                    echoview.set_rgb(*rgb255_tuple)
-                if brightness:
-                    echoview.set_backlight(brightness)
-                if (text is not None )|(status is not None )|(emoji is not None ):
-                    update_display(echoview, font_path, status=status, emoji=emoji, text=text, scroll_speed=scroll_speed)
-
-                client_socket.send(b"OK\n")
-                if response_to_client:
-                    try:
-                        response_bytes = json.dumps({"response": response_to_client}).encode("utf-8") + b"\n"
-                        client_socket.send(response_bytes)
-                        print(f"[Socket - {addr}] 发送响应: {response_to_client}")
-                    except Exception as e:
-                        print(f"[Socket - {addr}] 发送响应错误: {e}")
-
-            except json.JSONDecodeError:
-                client_socket.send(b"ERROR: invalid JSON\n")
-            except Exception as e:
-                print(f"[Socket - {addr}] 处理数据错误: {e}")
-                client_socket.send(f"ERROR: {e}\n".encode("utf-8"))
+                    client_socket.send(b"OK\n")
+                    if response_to_client:
+                        try:
+                            response_bytes = json.dumps({"response": response_to_client}).encode("utf-8") + b"\n"
+                            client_socket.send(response_bytes)
+                            print(f"[Socket - {addr}] 发送响应: {response_to_client}")
+                        except Exception as e:
+                            print(f"[Socket - {addr}] 发送响应错误: {e}")
+                except json.JSONDecodeError:
+                    client_socket.send(b"ERROR: invalid JSON\n")
+                except Exception as e:
+                    print(f"[Socket - {addr}] 处理数据错误: {e}")
+                    client_socket.send(f"ERROR: {e}\n".encode("utf-8"))
 
     except Exception as e:
         print(f"[Socket - {addr}] 连接错误: {e}")
