@@ -178,31 +178,73 @@ def render_top_area(status_text, emoji_text, font_path, image_width,
 
     return image,top_height
 
-def render_scroll_info_area(info_text, font_path, scroll_width, scroll_height, info_font_size=28):
+def render_scroll_info_area_dynamic_font(info_text, font_path, scroll_width, scroll_height, min_font_size=20, max_font_size=48):
+    """
+    根据内容高度和屏幕高度动态调整字体大小，如果能完整显示则使用最大字体，否则使用指定字体大小滚动显示。
 
+    Args:
+        info_text (str): 要显示的文本内容。
+        font_path (str): 字体文件路径。
+        scroll_width (int): 滚动区域的宽度。
+        scroll_height (int): 滚动区域的高度。
+        min_font_size (int): 最小允许的字体大小。
+        max_font_size (int): 最大允许的字体大小。
 
-    info_font = ImageFont.truetype(font_path, info_font_size)
+    Returns:
+        Image.Image: 包含渲染文本的图像。
+    """
+    best_font_size = min_font_size
+    total_content_height_best_font = float('inf')
 
-    # 准备换行绘制
-    dummy_draw = ImageDraw.Draw(Image.new("RGB", (scroll_width, 1000)))
-    lines = wrap_text(dummy_draw, info_text, info_font, scroll_width)
+    # 尝试从最大字体到最小字体，找到能在屏幕内完整显示的最大字体
+    for font_size in range(max_font_size, min_font_size - 1, -2):  # 逆序尝试，步长为2以提高效率
+        try:
+            info_font = ImageFont.truetype(font_path, font_size)
+            dummy_draw = ImageDraw.Draw(Image.new("RGB", (scroll_width, 1000)))
+            lines = wrap_text(dummy_draw, info_text, info_font, scroll_width)
+            ascent, descent = info_font.getmetrics()
+            line_height = ascent + descent
+            total_content_height = len(lines) * line_height+cornerHeight
 
-    ascent, descent = info_font.getmetrics()
-    line_height = ascent + descent
+            if total_content_height <= scroll_height:
+                best_font_size = font_size
+                total_content_height_best_font = total_content_height
+                break  # 找到合适的字体大小，停止尝试
+        except IOError:
+            print(f"Error: Font file not found at {font_path}")
+            return Image.new("RGBA", (scroll_width, scroll_height), (0, 0, 0, 255))
+        except Exception as e:
+            print(f"Error creating font with size {font_size}: {e}")
+            continue
 
-    # 额外添加一行高度作为底部 padding
-    total_content_height = (len(lines) + 1) * line_height
-    output_height = max(scroll_height, total_content_height)
-
-    # 创建输出图像
-    scroll_img = Image.new("RGBA", (scroll_width, output_height), (0, 0, 0, 255))
-    draw = ImageDraw.Draw(scroll_img)
-
-    # 绘制每一行文本
-    for i, line in enumerate(lines):
-        draw_mixed_text(draw, scroll_img, line, info_font, (0, i * line_height))
-
-    return scroll_img
+    # 如果找到能在屏幕内完整显示的字体
+    if total_content_height_best_font <= scroll_height:
+        info_font = ImageFont.truetype(font_path, best_font_size)
+        dummy_draw = ImageDraw.Draw(Image.new("RGB", (scroll_width, 1000)))
+        lines = wrap_text(dummy_draw, info_text, info_font, scroll_width)
+        ascent, descent = info_font.getmetrics()
+        line_height = ascent + descent
+        output_height = scroll_height  # 高度为屏幕高度
+        scroll_img = Image.new("RGBA", (scroll_width, output_height), (0, 0, 0, 255))
+        draw = ImageDraw.Draw(scroll_img)
+        y_offset = (scroll_height - total_content_height_best_font) // 2 # 垂直居中显示
+        for i, line in enumerate(lines):
+            draw_mixed_text(draw, scroll_img, line, info_font, (0, y_offset + i * line_height))
+        return scroll_img
+    else:
+        # 否则，使用原始的滚动绘制逻辑
+        info_font = ImageFont.truetype(font_path, min_font_size) # 使用最小字体或您指定的默认滚动字体大小
+        dummy_draw = ImageDraw.Draw(Image.new("RGB", (scroll_width, 1000)))
+        lines = wrap_text(dummy_draw, info_text, info_font, scroll_width)
+        ascent, descent = info_font.getmetrics()
+        line_height = ascent + descent
+        total_content_height = len(lines) * line_height+cornerHeight
+        output_height = max(scroll_height, total_content_height)
+        scroll_img = Image.new("RGBA", (scroll_width, output_height), (0, 0, 0, 255))
+        draw = ImageDraw.Draw(scroll_img)
+        for i, line in enumerate(lines):
+            draw_mixed_text(draw, scroll_img, line, info_font, (0, i * line_height))
+        return scroll_img
 
 def scroll_info_area(top_image: Image.Image, info_scroll_img: Image.Image, echoview,
                      scroll_speed=2, delay=0.05, stop_event=None):
@@ -262,7 +304,7 @@ def update_display(echoview, font_path, status=None, emoji=None, text=None, scro
             scroll_thread.join()
         scroll_stop_event = threading.Event()
 
-        scroll_img  = render_scroll_info_area(
+        scroll_img  = render_scroll_info_area_dynamic_font(
                 info_text=current_text,
                 font_path=font_path,
                 scroll_width=echoview.LCD_WIDTH,
@@ -332,7 +374,7 @@ def handle_client(client_socket, addr, echoview, font_path):
 
                     if rgbled:
                         rgb255_tuple = get_rgb255_from_any(rgbled)
-                        echoview.set_rgb(*rgb255_tuple)
+                        echoview.set_rgb_fade(*rgb255_tuple,duration_ms=500)
                     if brightness:
                         echoview.set_backlight(brightness)
                     if (text is not None) or (status is not None) or (emoji is not None):
@@ -361,6 +403,8 @@ def handle_client(client_socket, addr, echoview, font_path):
 
 def start_socket_server(host='0.0.0.0', port=12345, font_path="NotoSansSC-Bold.ttf"):
     echoview = EchoViewBoard()
+    global cornerHeight
+    cornerHeight=echoview.CornerHeight
     print(f"[LCD] 初始化完成，大小: {echoview.LCD_WIDTH}x{echoview.LCD_HEIGHT}")
 
     # 注册按钮按下事件

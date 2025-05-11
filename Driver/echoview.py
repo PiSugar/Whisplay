@@ -7,6 +7,7 @@ class EchoViewBoard:
     # LCD 参数
     LCD_WIDTH = 240
     LCD_HEIGHT = 280
+    CornerHeight=20 #圆角高度占的像素
     DC_PIN = 13
     RST_PIN = 7
     LED_PIN = 15
@@ -32,11 +33,14 @@ class EchoViewBoard:
         self.backlight_pwm = GPIO.PWM(self.LED_PIN, 1000) # 1000Hz 的 PWM 频率可能是一个合理的起点
         self.backlight_pwm.start(100)
 
-        # 初始化 RGB LED 引脚
+         # 初始化 RGB LED 引脚
         GPIO.setup([self.RED_PIN, self.GREEN_PIN, self.BLUE_PIN], GPIO.OUT)
         self.red_pwm = GPIO.PWM(self.RED_PIN, 100)
         self.green_pwm = GPIO.PWM(self.GREEN_PIN, 100)
         self.blue_pwm = GPIO.PWM(self.BLUE_PIN, 100)
+        self._current_r = 0
+        self._current_g = 0
+        self._current_b = 0
         self.red_pwm.start(0)
         self.green_pwm.start(0)
         self.blue_pwm.start(0)
@@ -163,6 +167,26 @@ class EchoViewBoard:
         self.red_pwm.ChangeDutyCycle(100 - (r / 255 * 100))
         self.green_pwm.ChangeDutyCycle(100 - (g / 255 * 100))
         self.blue_pwm.ChangeDutyCycle(100 - (b / 255 * 100))
+        self._current_r = r
+        self._current_g = g
+        self._current_b = b
+
+    def set_rgb_fade(self, r_target, g_target, b_target, duration_ms=100):
+        steps = 20  # 可以调整步数来控制渐变的平滑度
+        delay_ms = duration_ms / steps
+
+        r_step = (r_target - self._current_r) / steps
+        g_step = (g_target - self._current_g) / steps
+        b_step = (b_target - self._current_b) / steps
+
+        for _ in range(steps + 1):
+            r_interim = int(self._current_r + _ * r_step)
+            g_interim = int(self._current_g + _ * g_step)
+            b_interim = int(self._current_b + _ * b_step)
+            self.set_rgb(max(0, min(255, r_interim)),
+                         max(0, min(255, g_interim)),
+                         max(0, min(255, b_interim)))
+            time.sleep(delay_ms / 1000.0)
 
     def button_pressed(self):
         return GPIO.input(self.BUTTON_PIN) == 0
