@@ -44,11 +44,11 @@ def generate_random_data():
     ]
     scroll_speed_options = [3, 5, 7, 10]
     brightness_options = [  50, 75, 100]
-
+    color=random.choice(test_colors)
     data = {
-        "RGB": random.choice(test_colors),
+        "RGB": color,
         "status": random.choice(status_options),
-        "battery_status":random.choice(battery_status),
+        "battery_color":color,
         "battery_level":random.randint(0, 99),
         "emoji": random.choice(emoji_options),
         # "text": ,
@@ -59,7 +59,9 @@ def generate_random_data():
         data["text"] =f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {random_text}"
         # data["text"] =f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
         print("本次包含text部分")
-    data["text"] =f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {random_text}"
+    # data["text"] =f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {random_text}"
+    
+    data["text"] =f"Press the button to start"
     return data
 
 def main():
