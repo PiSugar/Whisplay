@@ -48,7 +48,7 @@ def generate_random_data():
     data = {
         "RGB": color,
         "status": random.choice(status_options),
-        "battery_color":color,
+        # "battery_color":color,
         "battery_level":random.randint(0, 99),
         "emoji": random.choice(emoji_options),
         # "text": ,
