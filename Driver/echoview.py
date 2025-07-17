@@ -58,6 +58,7 @@ class EchoViewBoard:
         self.previous_frame = None
         # 检测硬件版本并设置背光模式
         self._detect_hardware_version()
+        self._detect_wm8960()
         self.set_backlight(0)
         self._reset_lcd()
         self._init_display()
@@ -90,6 +91,25 @@ class EchoViewBoard:
         except Exception as e:
             print(f"Error detecting hardware version: {e}")
             self.backlight_mode = True  # 默认使用 PWM 模式
+
+    def _detect_wm8960(self):
+        """
+        检测是否存在名字包含 wm8960 的声卡
+        """
+        try:
+            with open("/proc/asound/cards", "r") as f:
+                lines = f.readlines()
+                for line in lines:
+                    if "wm8960" in line.lower():
+                        print("wm8960 sound card detected.")
+                        return True
+        except Exception as e:
+            print(f"Error detecting wm8960 sound card: {e}")
+            return False
+
+        print("wm8960 sound card driver is installed. Please refer to the following page for installation instructions.")
+        print("https://docs.pisugar.com/")
+        return False
 
     # ========== 背光控制 ==========
     def set_backlight(self, brightness):
