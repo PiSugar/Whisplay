@@ -4,9 +4,9 @@ import sys
 import os
 sys.path.append(os.path.abspath("../Driver"))
 
-from echoview import EchoViewBoard
+from WhisPlay import WhisPlayBoard
 
-board = EchoViewBoard()
+board = WhisPlayBoard()
 
 board.set_backlight(50)
 def load_jpg_as_rgb565(filepath, screen_width, screen_height):
