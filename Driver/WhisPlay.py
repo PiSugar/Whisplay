@@ -40,6 +40,7 @@ class WhisPlayBoard:
         self.red_pwm.start(0)
         self.green_pwm.start(0)
         self.blue_pwm.start(0)
+        self.backlight_pwm=None
 
         # 初始化按键
         GPIO.setup(self.BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -52,7 +53,7 @@ class WhisPlayBoard:
         # 初始化 SPI
         self.spi = spidev.SpiDev()
         self.spi.open(0, 0)
-        self.spi.max_speed_hz = 10_000_000
+        self.spi.max_speed_hz = 100_000_000
         self.spi.mode = 0b00
 
         self.previous_frame = None

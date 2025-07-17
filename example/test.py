@@ -2,6 +2,7 @@ from time import sleep
 from PIL import Image
 import sys
 import os
+
 sys.path.append(os.path.abspath("../Driver"))
 
 from WhisPlay import WhisPlayBoard
@@ -9,6 +10,11 @@ from WhisPlay import WhisPlayBoard
 board = WhisPlayBoard()
 
 board.set_backlight(50)
+
+# Declare a global variable to store the image data
+# It will be initialized to None and loaded once
+global_image_data = None
+
 def load_jpg_as_rgb565(filepath, screen_width, screen_height):
     img = Image.open(filepath).convert('RGB')
     original_width, original_height = img.size
@@ -17,22 +23,22 @@ def load_jpg_as_rgb565(filepath, screen_width, screen_height):
     screen_aspect_ratio = screen_width / screen_height
 
     if aspect_ratio > screen_aspect_ratio:
-        # 原始图像更宽，以屏幕高度为基准缩放
+        # Original image is wider, scale based on screen height
         new_height = screen_height
         new_width = int(new_height * aspect_ratio)
         resized_img = img.resize((new_width, new_height))
-        # 计算水平方向的偏移量，使图像居中
+        # Calculate horizontal offset to center the image
         offset_x = (new_width - screen_width) // 2
-        # 裁剪图像以适应屏幕宽度
+        # Crop the image to fit screen width
         cropped_img = resized_img.crop((offset_x, 0, offset_x + screen_width, screen_height))
     else:
-        # 原始图像更高或宽高比相同，以屏幕宽度为基准缩放
+        # Original image is taller or has the same aspect ratio, scale based on screen width
         new_width = screen_width
         new_height = int(new_width / aspect_ratio)
         resized_img = img.resize((new_width, new_height))
-        # 计算垂直方向的偏移量，使图像居中
+        # Calculate vertical offset to center the image
         offset_y = (new_height - screen_height) // 2
-        # 裁剪图像以适应屏幕高度
+        # Crop the image to fit screen height
         cropped_img = resized_img.crop((0, offset_y, screen_width, offset_y + screen_height))
 
     pixel_data = []
@@ -43,53 +49,53 @@ def load_jpg_as_rgb565(filepath, screen_width, screen_height):
             pixel_data.extend([(rgb565 >> 8) & 0xFF, rgb565 & 0xFF])
 
     return pixel_data
-# 按钮回调函数
+
+# Button callback function
 def on_button_pressed():
-    print("按钮被按下了！")
+    print("Button pressed!")
 
-
-    # 显示红色填充屏幕
-    board.fill_screen(0xF800)  # 红色 RGB565
+    # Display red filled screen
+    board.fill_screen(0xF800)  # Red RGB565
     board.set_rgb(255, 0, 0)
-
     sleep(0.5)
 
-    # 显示绿色填充屏幕
-    board.fill_screen(0x07E0)  # 绿色 RGB565
+    # Display green filled screen
+    board.fill_screen(0x07E0)  # Green RGB565
     board.set_rgb(0, 255, 0)
-
     sleep(0.5)
 
-    # 显示蓝色填充屏幕
-    board.fill_screen(0x001F)  # 蓝色 RGB565
+    # Display blue filled screen
+    board.fill_screen(0x001F)  # Blue RGB565
     board.set_rgb(0, 0, 255)
+    sleep(0.5)
 
-    # 显示 test.jpg 图片
-    try:
-        img_data = load_jpg_as_rgb565("test.png", board.LCD_WIDTH, board.LCD_HEIGHT)
-        board.draw_image(0, 0, board.LCD_WIDTH, board.LCD_HEIGHT, img_data)
-        print("图片 test.jpg 显示成功")
-    except Exception as e:
-        print("图片加载失败：", e)
+    # Display test.png image using the globally stored data
+    global global_image_data
+    if global_image_data is not None:
+        board.draw_image(0, 0, board.LCD_WIDTH, board.LCD_HEIGHT, global_image_data)
+        print("Image test.png displayed successfully from memory.")
+    else:
+        print("Image data not loaded yet. This should not happen after initial load.")
 
-# 注册按钮事件
+# Register button event
 board.on_button_press(on_button_pressed)
 
-    # 显示 test.jpg 图片
+# --- Initial Image Loading ---
+# Load the image once at the beginning of the script
 try:
-    img_data = load_jpg_as_rgb565("test.png", board.LCD_WIDTH, board.LCD_HEIGHT)
-    board.draw_image(0, 0, board.LCD_WIDTH, board.LCD_HEIGHT, img_data)
-    print("图片 test.jpg 显示成功")
+    global_image_data = load_jpg_as_rgb565("test.png", board.LCD_WIDTH, board.LCD_HEIGHT)
+    board.draw_image(0, 0, board.LCD_WIDTH, board.LCD_HEIGHT, global_image_data)
+    print("Image test.png loaded and displayed initially.")
 except Exception as e:
-    print("图片加载失败：", e)
-    
+    print(f"Failed to load initial image: {e}")
+
 try:
-    print("等待按钮按下（按 Ctrl+C 退出）...")
+    print("Waiting for button press (Press Ctrl+C to exit)...")
     while True:
         sleep(0.1)
 
 except KeyboardInterrupt:
-    print("退出程序...")
+    print("Exiting program...")
 
 finally:
     board.cleanup()
