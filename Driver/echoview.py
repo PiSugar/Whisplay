@@ -29,12 +29,6 @@ class EchoViewBoard:
 
         GPIO.output(self.LED_PIN, GPIO.LOW)  # 使能背光
 
-        # 初始化背光 PWM
-        self.backlight_pwm = GPIO.PWM(
-            self.LED_PIN, 1000
-        )  # 1000Hz 的 PWM 频率可能是一个合理的起点
-        self.backlight_pwm.start(100)
-
         # 初始化 RGB LED 引脚
         GPIO.setup([self.RED_PIN, self.GREEN_PIN, self.BLUE_PIN], GPIO.OUT)
         self.red_pwm = GPIO.PWM(self.RED_PIN, 100)
@@ -58,21 +52,77 @@ class EchoViewBoard:
         # 初始化 SPI
         self.spi = spidev.SpiDev()
         self.spi.open(0, 0)
-        self.spi.max_speed_hz = 100_000_000
+        self.spi.max_speed_hz = 10_000_000
         self.spi.mode = 0b00
 
         self.previous_frame = None
+        # 检测硬件版本并设置背光模式
+        self._detect_hardware_version()
+        self.set_backlight(0)
         self._reset_lcd()
         self._init_display()
         self.fill_screen(0)
 
-    # ========== LCD 显示功能 ==========
+    def _detect_hardware_version(self):
+        """
+        检测树莓派硬件版本，并根据版本设置背光模式
+        """
+        try:
+            with open("/proc/cpuinfo", "r") as f:
+                lines = f.readlines()
+                model_name = None
+                for line in lines:
+                    if line.startswith("Model"):
+                        model_name = line.strip().split(":")[1].strip()
+                        break
+                if model_name:
+                    if "Zero" in model_name and "2" not in model_name:
+                        # 如果是 Zero 或 Zero W
+                        self.backlight_mode = False  # 使用简单开关模式
+                    else:
+                        # 其他型号（如 Zero 2 W, 3B, 4B 等）
+                        self.backlight_mode = True  # 使用 PWM 模式
+                    print(
+                        f"Detected hardware: {model_name}, Backlight mode: {'PWM' if self.backlight_mode else 'Simple Switch'}")
+                else:
+                    print("Model name not found in /proc/cpuinfo")
+                    self.backlight_mode = True  # 默认使用 PWM 模式
+        except Exception as e:
+            print(f"Error detecting hardware version: {e}")
+            self.backlight_mode = True  # 默认使用 PWM 模式
 
     # ========== 背光控制 ==========
     def set_backlight(self, brightness):
-        if 0 <= brightness <= 100:
-            duty_cycle = 100 - brightness
-            self.backlight_pwm.ChangeDutyCycle(duty_cycle)
+        if self.backlight_mode:  # 如果是 PWM 模式
+            if self.backlight_pwm is None:
+                self.backlight_pwm = GPIO.PWM(self.LED_PIN, 1000)
+                self.backlight_pwm.start(100)
+            if 0 <= brightness <= 100:
+                duty_cycle = 100 - brightness
+                self.backlight_pwm.ChangeDutyCycle(duty_cycle)
+        else:  # 如果是简单开关模式
+            if brightness == 0:
+                GPIO.output(self.LED_PIN, GPIO.HIGH)  # 关闭背光
+            else:
+                GPIO.output(self.LED_PIN, GPIO.LOW)  # 打开背光
+
+    def set_backlight_mode(self, mode):
+        """
+        设置背光模式
+        :param mode: True 使用 PWM 调节亮度，False 使用简单开关控制
+        """
+        if mode == self.backlight_mode:
+            return  # 模式未改变，无需操作
+
+        if mode:  # 切换到 PWM 模式
+            self.backlight_pwm = GPIO.PWM(self.LED_PIN, 1000)
+            self.backlight_pwm.start(100)
+        else:  # 切换到简单开关模式
+            if self.backlight_pwm is not None:
+                self.backlight_pwm.stop()
+                self.backlight_pwm = None
+            GPIO.output(self.LED_PIN, GPIO.HIGH)  # 确保背光打开
+        self.backlight_mode = mode
 
     def _reset_lcd(self):
         GPIO.output(self.RST_PIN, GPIO.HIGH)
@@ -86,7 +136,8 @@ class EchoViewBoard:
         self._send_command(0x11)
         time.sleep(0.12)
         USE_HORIZONTAL = 1
-        direction = {0: 0x00, 1: 0xC0, 2: 0x70, 3: 0xA0}.get(USE_HORIZONTAL, 0x00)
+        direction = {0: 0x00, 1: 0xC0, 2: 0x70,
+                     3: 0xA0}.get(USE_HORIZONTAL, 0x00)
         self._send_command(0x36, direction)
         self._send_command(0x3A, 0x05)
         self._send_command(0xB2, 0x0C, 0x0C, 0x00, 0x33, 0x33)
@@ -145,17 +196,19 @@ class EchoViewBoard:
         GPIO.output(self.DC_PIN, GPIO.HIGH)
         max_chunk = 4096
         for i in range(0, len(data), max_chunk):
-            self.spi.writebytes(data[i : i + max_chunk])
+            self.spi.writebytes(data[i: i + max_chunk])
 
     def set_window(self, x0, y0, x1, y1, use_horizontal=0):
         if use_horizontal in (0, 1):
             self._send_command(0x2A, x0 >> 8, x0 & 0xFF, x1 >> 8, x1 & 0xFF)
             self._send_command(
-                0x2B, (y0 + 20) >> 8, (y0 + 20) & 0xFF, (y1 + 20) >> 8, (y1 + 20) & 0xFF
+                0x2B, (y0 + 20) >> 8, (y0 + 20) & 0xFF, (y1 +
+                                                         20) >> 8, (y1 + 20) & 0xFF
             )
         elif use_horizontal in (2, 3):
             self._send_command(
-                0x2A, (x0 + 20) >> 8, (x0 + 20) & 0xFF, (x1 + 20) >> 8, (x1 + 20) & 0xFF
+                0x2A, (x0 + 20) >> 8, (x0 + 20) & 0xFF, (x1 +
+                                                         20) >> 8, (x1 + 20) & 0xFF
             )
             self._send_command(0x2B, y0 >> 8, y0 & 0xFF, y1 >> 8, y1 & 0xFF)
         self._send_command(0x2C)
@@ -256,6 +309,9 @@ class EchoViewBoard:
 
     # ========== 清理 ==========
     def cleanup(self):
+        # 清理代码中添加对 backlight_pwm 的处理
+        if self.backlight_pwm is not None:
+            self.backlight_pwm.stop()
         self.spi.close()
         self.red_pwm.stop()
         self.green_pwm.stop()
