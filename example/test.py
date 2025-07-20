@@ -2,6 +2,7 @@ from time import sleep
 from PIL import Image
 import sys
 import os
+import argparse # Import the argparse module
 
 sys.path.append(os.path.abspath("../Driver"))
 
@@ -14,6 +15,7 @@ board.set_backlight(50)
 # Declare a global variable to store the image data
 # It will be initialized to None and loaded once
 global_image_data = None
+image_filepath = None # Declare a global variable for the image filepath
 
 def load_jpg_as_rgb565(filepath, screen_width, screen_height):
     img = Image.open(filepath).convert('RGB')
@@ -69,25 +71,32 @@ def on_button_pressed():
     board.set_rgb(0, 0, 255)
     sleep(0.5)
 
-    # Display test.png image using the globally stored data
-    global global_image_data
+    # Display the image using the globally stored data
+    global global_image_data, image_filepath
     if global_image_data is not None:
         board.draw_image(0, 0, board.LCD_WIDTH, board.LCD_HEIGHT, global_image_data)
-        print("Image test.png displayed successfully from memory.")
+        print(f"Image {os.path.basename(image_filepath)} displayed successfully from memory.")
     else:
         print("Image data not loaded yet. This should not happen after initial load.")
 
 # Register button event
 board.on_button_press(on_button_pressed)
 
+# --- Argument Parsing ---
+parser = argparse.ArgumentParser(description="Display an image on WhisPlay board and respond to button presses.")
+parser.add_argument("--image", default="test.png", help="Path to the image file (default: test.png)")
+args = parser.parse_args()
+
+image_filepath = args.image # Set the global image_filepath
+
 # --- Initial Image Loading ---
 # Load the image once at the beginning of the script
 try:
-    global_image_data = load_jpg_as_rgb565("test.png", board.LCD_WIDTH, board.LCD_HEIGHT)
+    global_image_data = load_jpg_as_rgb565(image_filepath, board.LCD_WIDTH, board.LCD_HEIGHT)
     board.draw_image(0, 0, board.LCD_WIDTH, board.LCD_HEIGHT, global_image_data)
-    print("Image test.png loaded and displayed initially.")
+    print(f"Image {os.path.basename(image_filepath)} loaded and displayed initially.")
 except Exception as e:
-    print(f"Failed to load initial image: {e}")
+    print(f"Failed to load initial image from {image_filepath}: {e}")
 
 try:
     print("Waiting for button press (Press Ctrl+C to exit)...")
