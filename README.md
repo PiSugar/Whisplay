@@ -6,6 +6,16 @@
 
 This project provides full driver support for the **PiSugar WhisPlay expansion board**, allowing you to easily control the onboard LCD screen, physical buttons, and LED indicators, along with audio functionality.
 
+---
+
+### **💡 总线信息提示 / Bus Information Tip 💡**
+
+设备使用了 **I2C、SPI、I2S** 总线。其中 **I2S 和 I2C 总线** 用作音频驱动，会在安装驱动的时候自动启动。**SPI 总线** 需要手动打开。
+
+The device utilizes **I2C, SPI, and I2S** buses. The **I2S and I2C buses** are used for audio functionality and will be automatically enabled during driver installation. The **SPI bus** needs to be enabled manually.
+
+---
+
 ### 驱动程序结构 / Driver Structure
 
 所有驱动文件都位于 `Driver` 目录下，主要包括：
@@ -28,7 +38,6 @@ All driver files are located in the `Driver` directory and primarily include:
     sudo bash install_wm8960_drive.sh
     ```
 
------
 
 ## 示例程序 / Example Programs
 
