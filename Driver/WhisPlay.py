@@ -40,7 +40,7 @@ class WhisPlayBoard:
         self.red_pwm.start(0)
         self.green_pwm.start(0)
         self.blue_pwm.start(0)
-        self.backlight_pwm=None
+        self.backlight_pwm = None
 
         # 初始化按键
         GPIO.setup(self.BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -303,7 +303,7 @@ class WhisPlayBoard:
             time.sleep(delay_ms / 1000.0)
 
     def button_pressed(self):
-        return GPIO.input(self.BUTTON_PIN) == 0
+        return GPIO.input(self.BUTTON_PIN) == 1
 
     def on_button_press(self, callback):
         self.button_press_callback = callback
@@ -320,10 +320,10 @@ class WhisPlayBoard:
             self.button_press_callback()
 
     def _button_event(self, channel):
+        # 按下是5V，松开是0V
         if GPIO.input(channel):
             # Falling edge (按钮按下)
             self._button_press_event(channel)
-
         else:
             # Rising edge (按钮释放)
             self._button_release_event(channel)
