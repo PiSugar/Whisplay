@@ -2,20 +2,22 @@ from time import sleep
 from PIL import Image
 import sys
 import os
-import argparse # Import the argparse module
+import argparse
+import pygame  # Import pygame
 
 sys.path.append(os.path.abspath("../Driver"))
-
 from WhisPlay import WhisPlayBoard
 
 board = WhisPlayBoard()
-
 board.set_backlight(50)
 
-# Declare a global variable to store the image data
-# It will be initialized to None and loaded once
 global_image_data = None
-image_filepath = None # Declare a global variable for the image filepath
+image_filepath = None
+
+# Initialize pygame mixer
+pygame.mixer.init()
+sound = None  # Global sound variable
+playing = False  # Global variable to track if sound is playing
 
 def load_jpg_as_rgb565(filepath, screen_width, screen_height):
     img = Image.open(filepath).convert('RGB')
@@ -79,15 +81,28 @@ def on_button_pressed():
     else:
         print("Image data not loaded yet. This should not happen after initial load.")
 
+    global sound, playing  # Use the global sound and playing variables
+    if sound:
+        if playing:
+            sound.stop()  # Stop the current sound if it's playing
+            print("Stopping current sound...")
+        sound.play()  # Play the sound from the beginning
+        print("Playing sound...")
+        playing = True  # Set the playing flag
+    else:
+        print("Sound not loaded.")
+
 # Register button event
 board.on_button_press(on_button_pressed)
 
 # --- Argument Parsing ---
-parser = argparse.ArgumentParser(description="Display an image on WhisPlay board and respond to button presses.")
+parser = argparse.ArgumentParser(description="Display an image and play sound on button press.")
 parser.add_argument("--image", default="test.png", help="Path to the image file (default: test.png)")
+parser.add_argument("--sound", default="test.mp3", help="Path to the sound file (default: test.mp3)")  # Add sound argument
 args = parser.parse_args()
 
-image_filepath = args.image # Set the global image_filepath
+image_filepath = args.image
+sound_filepath = args.sound  # Get sound filepath
 
 # --- Initial Image Loading ---
 # Load the image once at the beginning of the script
@@ -97,6 +112,14 @@ try:
     print(f"Image {os.path.basename(image_filepath)} loaded and displayed initially.")
 except Exception as e:
     print(f"Failed to load initial image from {image_filepath}: {e}")
+
+# Load the sound
+try:
+    sound = pygame.mixer.Sound(sound_filepath)
+    print(f"Sound {os.path.basename(sound_filepath)} loaded successfully.")
+except Exception as e:
+    print(f"Failed to load sound from {sound_filepath}: {e}")
+    sound = None
 
 try:
     print("Waiting for button press (Press Ctrl+C to exit)...")
@@ -108,3 +131,4 @@ except KeyboardInterrupt:
 
 finally:
     board.cleanup()
+    pygame.mixer.quit()  # Quit the mixer
