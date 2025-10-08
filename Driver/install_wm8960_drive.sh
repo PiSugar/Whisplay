@@ -15,7 +15,21 @@ fi
 #sudo apt-get full-upgrade -y
 #sudo apt-get install --reinstall alsa-base alsa-utils -y
 
+enable_spi() {
+    echo "Attempting to enable SPI interface..."
+    if which raspi-config > /dev/null 2>&1; then
+        # 严格使用 raspi-config 启用 SPI
+        sudo raspi-config nonint do_spi 0
+        echo "SPI interface enabled successfully via raspi-config."
+    else
+        # 未找到 raspi-config 则跳出提示并退出
+        echo "ERROR: raspi-config not found. Cannot automatically enable SPI interface." 1>&2
+        echo "Please install raspi-config or enable SPI manually before running." 1>&2
+        exit 1
+    fi
+}
 
+enable_spi
 # 解压本地压缩包
 unzip -o WM8960-Audio-HAT.zip
 cd WM8960-Audio-HAT
@@ -56,6 +70,8 @@ sudo chmod u=rwx,go=rx /usr/bin/wm8960-soundcard
 
 systemctl enable  wm8960-soundcard.service 
 systemctl start wm8960-soundcard                                
+
+
 
 echo "------------------------------------------------------"
 echo "Please reboot your raspberry pi to apply all settings"
