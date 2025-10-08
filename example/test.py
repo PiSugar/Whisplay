@@ -58,6 +58,20 @@ def load_jpg_as_rgb565(filepath, screen_width, screen_height):
 def on_button_pressed():
     print("Button pressed!")
 
+    global sound, playing  # Use the global sound and playing variables
+    
+    # --- MODIFICATION START: Play sound BEFORE screen changes ---
+    if sound:
+        if playing:
+            sound.stop()  # Stop the current sound if it's playing
+            print("Stopping current sound...")
+        sound.play()  # Play the sound from the beginning
+        print("Playing sound concurrently with display changes...")
+        playing = True  # Set the playing flag
+    else:
+        print("Sound not loaded.")
+    # --- MODIFICATION END ---
+
     # Display red filled screen
     board.fill_screen(0xF800)  # Red RGB565
     board.set_rgb(255, 0, 0)
@@ -80,18 +94,7 @@ def on_button_pressed():
         print(f"Image {os.path.basename(image_filepath)} displayed successfully from memory.")
     else:
         print("Image data not loaded yet. This should not happen after initial load.")
-
-    global sound, playing  # Use the global sound and playing variables
-    if sound:
-        if playing:
-            sound.stop()  # Stop the current sound if it's playing
-            print("Stopping current sound...")
-        sound.play()  # Play the sound from the beginning
-        print("Playing sound...")
-        playing = True  # Set the playing flag
-    else:
-        print("Sound not loaded.")
-
+    
 # Register button event
 board.on_button_press(on_button_pressed)
 
@@ -124,6 +127,10 @@ except Exception as e:
 try:
     print("Waiting for button press (Press Ctrl+C to exit)...")
     while True:
+        # Check if the sound has finished playing and update the 'playing' flag
+        if playing and not pygame.mixer.get_busy():
+            playing = False
+            # print("Sound finished playing.") # Optional print
         sleep(0.1)
 
 except KeyboardInterrupt:
