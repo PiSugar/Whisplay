@@ -6,6 +6,8 @@
 
 This project provides comprehensive driver support for the **PiSugar Whisplay Hat**, enabling easy control of the onboard LCD screen, physical buttons, LED indicators, and audio functions.
 
+More Details please refer to [Whisplay HAT Docs](https://docs.pisugar.com/docs/product-wiki/whisplay/intro)
+
 ---
 
 ### **💡 Bus Information Tip 💡**
