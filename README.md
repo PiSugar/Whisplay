@@ -12,9 +12,26 @@ More Details please refer to [Whisplay HAT Docs](https://docs.pisugar.com/docs/p
 
 ### **💡 Bus Information Tip 💡**
 
-The device utilizes **I2C, SPI, and I2S** buses. The **I2S and I2C buses** are used for audio and will be enabled automatically during driver installation. The **SPI bus** needs to be enabled manually.
+The device utilizes **I2C, SPI, and I2S** buses. The **I2S and I2C buses** are used for audio and will be enabled automatically during driver installation. 
 
 ---
+
+### Installation
+
+After cloning the github project, navigate to the Driver directory and use the script to install.
+
+```bash
+git clone https://github.com/PiSugar/Whisplay.git
+cd Whisplay/Driver
+sudo bash install_wm8960_drive.sh
+sudo reboot
+```
+The program can be tested after the driver is installed.
+
+```shell
+cd Whisplay/example
+python test.py
+```
 
 ### Driver Structure
 
