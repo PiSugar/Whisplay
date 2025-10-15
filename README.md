@@ -30,7 +30,7 @@ The program can be tested after the driver is installed.
 
 ```shell
 cd Whisplay/example
-python test.py
+sudo python test.py
 ```
 
 ### Driver Structure
@@ -65,11 +65,11 @@ The `example` directory contains several Python examples to help you get started
     Run `test.py`:
     ```shell
     cd example
-    python test.py
+    sudo python test.py
     ```
-    You can also specify an image for testing:
+    You can also specify an image or sound for testing:
     ```shell
-    python test.py test1.jpg
+    sudo python test.py --image test.jpg --sound test.mp3
     ```
     **Effect**: When executed, the script will display a test image on the LCD. Pressing any button will change the screen to a solid color, and the RGB LED will simultaneously change to match that color.
 

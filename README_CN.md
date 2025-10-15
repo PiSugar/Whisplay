@@ -48,11 +48,11 @@
     运行 `test.py`：
     ```shell
     cd example
-    python test.py
+    sudo python test.py
     ```
     您也可以指定一张图片进行测试：
     ```shell
-    python test.py test1.jpg
+    sudo python test.py --image test.jpg --sound test.mp3
     ```
     **效果**: 程序运行后，LCD 将显示测试图片。按下任意按键，屏幕会变为纯色，同时 RGB LED 也将同步显示为相同的颜色。
 
