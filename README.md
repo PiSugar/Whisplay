@@ -56,9 +56,9 @@ All driver files are located in the `Driver` directory and primarily include:
 
 ## Example Programs
 
-The `example` directory contains several Python examples to help you get started quickly. Note that these examples do not currently include audio integration.
+The `example` directory contains Python examples to help you get started quickly.
 
-#### 1. `test.py`
+#### `test.py`
 
   * **Function**: This script verifies that the LCD, LEDs, and buttons are functioning correctly.
   * **Usage**:
@@ -73,22 +73,10 @@ The `example` directory contains several Python examples to help you get started
     ```
     **Effect**: When executed, the script will display a test image on the LCD. Pressing any button will change the screen to a solid color, and the RGB LED will simultaneously change to match that color.
 
-#### 2. `chatbot-ui.py`
-
-  * **Function**: This script provides a socket interface for a voice chatbot, allowing external programs to display status updates and conversation content.
-  * **Usage**:
-    1.  **Run UI Listener**: First, run `chatbot-ui.py` to listen on the port:
-        ```shell
-        cd example
-        python chatbot-ui.py
-        ```
-        **Note**: The program listens on port `12345`. Once connected, a client can send information to be displayed and receive button status updates.
-    2.  **Test UI**: In a new terminal window, run `sockettest.py` to test the UI:
-        ```shell
-        python sockettest.py
-        ```
-        **Effect**: After running `sockettest.py`, pressing a button will trigger the content on the LCD display to change randomly.
-
------
-
 **Note: This software currently only supports the official full version of the operating system.**
+
+## Links
+
+- [PiSugar Whisplay Docs](https://docs.pisugar.com/docs/product-wiki/whisplay/intro)
+- [whisplay-ai-chatbot](https://github.com/PiSugar/whisplay-ai-chatbot)
+- [whisplay-lumon-mdr-ui](https://github.com/PiSugar/whisplay-lumon-mdr-ui)
