@@ -1,12 +1,13 @@
+from WhisPlay import WhisPlayBoard
 from time import sleep
 from PIL import Image
 import sys
 import os
 import argparse
 import pygame  # Import pygame
+import subprocess
 
 sys.path.append(os.path.abspath("../Driver"))
-from WhisPlay import WhisPlayBoard
 
 board = WhisPlayBoard()
 board.set_backlight(50)
@@ -18,6 +19,42 @@ image_filepath = None
 pygame.mixer.init()
 sound = None  # Global sound variable
 playing = False  # Global variable to track if sound is playing
+
+
+def set_wm8960_volume_stable(volume_level: str):
+    """
+    Sets the 'Speaker' volume for the wm8960 sound card using the amixer command.
+
+    Args:
+        volume_level (str): The desired volume value, e.g., '90%' or '121'.
+    """
+
+    CARD_NAME = 'wm8960soundcard'
+    CONTROL_NAME = 'Speaker'
+    DEVICE_ARG = f'hw:{CARD_NAME}'
+
+    command = [
+        'amixer',
+        '-D', DEVICE_ARG,
+        'sset',
+        CONTROL_NAME,
+        volume_level
+    ]
+
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+
+        print(
+            f"INFO: Successfully set '{CONTROL_NAME}' volume to {volume_level} on card '{CARD_NAME}'.")
+
+    except subprocess.CalledProcessError as e:
+        print(f"ERROR: Failed to execute amixer.", file=sys.stderr)
+        print(f"Command: {' '.join(command)}", file=sys.stderr)
+        print(f"Return Code: {e.returncode}", file=sys.stderr)
+        print(f"Error Output:\n{e.stderr}", file=sys.stderr)
+    except FileNotFoundError:
+        print("ERROR: 'amixer' command not found. Ensure it is installed and in PATH.", file=sys.stderr)
+
 
 def load_jpg_as_rgb565(filepath, screen_width, screen_height):
     img = Image.open(filepath).convert('RGB')
@@ -34,7 +71,8 @@ def load_jpg_as_rgb565(filepath, screen_width, screen_height):
         # Calculate horizontal offset to center the image
         offset_x = (new_width - screen_width) // 2
         # Crop the image to fit screen width
-        cropped_img = resized_img.crop((offset_x, 0, offset_x + screen_width, screen_height))
+        cropped_img = resized_img.crop(
+            (offset_x, 0, offset_x + screen_width, screen_height))
     else:
         # Original image is taller or has the same aspect ratio, scale based on screen width
         new_width = screen_width
@@ -43,7 +81,8 @@ def load_jpg_as_rgb565(filepath, screen_width, screen_height):
         # Calculate vertical offset to center the image
         offset_y = (new_height - screen_height) // 2
         # Crop the image to fit screen height
-        cropped_img = resized_img.crop((0, offset_y, screen_width, offset_y + screen_height))
+        cropped_img = resized_img.crop(
+            (0, offset_y, screen_width, offset_y + screen_height))
 
     pixel_data = []
     for y in range(screen_height):
@@ -55,11 +94,13 @@ def load_jpg_as_rgb565(filepath, screen_width, screen_height):
     return pixel_data
 
 # Button callback function
+
+
 def on_button_pressed():
     print("Button pressed!")
 
     global sound, playing  # Use the global sound and playing variables
-    
+
     # --- MODIFICATION START: Play sound BEFORE screen changes ---
     if sound:
         if playing:
@@ -90,18 +131,25 @@ def on_button_pressed():
     # Display the image using the globally stored data
     global global_image_data, image_filepath
     if global_image_data is not None:
-        board.draw_image(0, 0, board.LCD_WIDTH, board.LCD_HEIGHT, global_image_data)
-        print(f"Image {os.path.basename(image_filepath)} displayed successfully from memory.")
+        board.draw_image(0, 0, board.LCD_WIDTH,
+                         board.LCD_HEIGHT, global_image_data)
+        print(
+            f"Image {os.path.basename(image_filepath)} displayed successfully from memory.")
     else:
         print("Image data not loaded yet. This should not happen after initial load.")
-    
+
+
 # Register button event
 board.on_button_press(on_button_pressed)
 
 # --- Argument Parsing ---
-parser = argparse.ArgumentParser(description="Display an image and play sound on button press.")
-parser.add_argument("--image", default="test.png", help="Path to the image file (default: test.png)")
-parser.add_argument("--sound", default="test.mp3", help="Path to the sound file (default: test.mp3)")  # Add sound argument
+parser = argparse.ArgumentParser(
+    description="Display an image and play sound on button press.")
+parser.add_argument("--image", default="test.png",
+                    help="Path to the image file (default: test.png)")
+parser.add_argument("--sound", default="test.mp3",
+                    # Add sound argument
+                    help="Path to the sound file (default: test.mp3)")
 args = parser.parse_args()
 
 image_filepath = args.image
@@ -110,9 +158,12 @@ sound_filepath = args.sound  # Get sound filepath
 # --- Initial Image Loading ---
 # Load the image once at the beginning of the script
 try:
-    global_image_data = load_jpg_as_rgb565(image_filepath, board.LCD_WIDTH, board.LCD_HEIGHT)
-    board.draw_image(0, 0, board.LCD_WIDTH, board.LCD_HEIGHT, global_image_data)
-    print(f"Image {os.path.basename(image_filepath)} loaded and displayed initially.")
+    global_image_data = load_jpg_as_rgb565(
+        image_filepath, board.LCD_WIDTH, board.LCD_HEIGHT)
+    board.draw_image(0, 0, board.LCD_WIDTH,
+                     board.LCD_HEIGHT, global_image_data)
+    print(
+        f"Image {os.path.basename(image_filepath)} loaded and displayed initially.")
 except Exception as e:
     print(f"Failed to load initial image from {image_filepath}: {e}")
 
@@ -120,6 +171,7 @@ except Exception as e:
 try:
     sound = pygame.mixer.Sound(sound_filepath)
     print(f"Sound {os.path.basename(sound_filepath)} loaded successfully.")
+    set_wm8960_volume_stable("121")  # Set volume to 121（74）
 except Exception as e:
     print(f"Failed to load sound from {sound_filepath}: {e}")
     sound = None
