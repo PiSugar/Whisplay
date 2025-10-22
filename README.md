@@ -21,7 +21,7 @@ The device utilizes **I2C, SPI, and I2S** buses. The **I2S and I2C buses** are u
 After cloning the github project, navigate to the Driver directory and use the script to install.
 
 ```bash
-git clone https://github.com/PiSugar/Whisplay.git
+git clone https://github.com/PiSugar/Whisplay.git --depth 1
 cd Whisplay/Driver
 sudo bash install_wm8960_drive.sh
 sudo reboot
