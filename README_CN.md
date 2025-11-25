@@ -41,18 +41,17 @@
 
 `example` 目录下提供了 Python 示例，帮助您快速上手。
 
-#### `test.py`
+#### `run_test.sh`
 
   * **功能**: 验证 LCD、LED 和按键是否正常工作。
   * **使用方法**:
-    运行 `test.py`：
     ```shell
     cd example
-    sudo python test.py
+    sudo bash run_test.sh
     ```
     您也可以指定一张图片进行测试：
     ```shell
-    sudo python test.py --image test.jpg --sound test.mp3
+    sudo bash run_test.sh --image test2.jpg --sound test.mp3
     ```
     **效果**: 程序运行后，LCD 将显示测试图片。按下任意按键，屏幕会变为纯色，同时 RGB LED 也将同步显示为相同的颜色。
 
