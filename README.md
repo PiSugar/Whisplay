@@ -58,18 +58,17 @@ All driver files are located in the `Driver` directory and primarily include:
 
 The `example` directory contains Python examples to help you get started quickly.
 
-#### `test.py`
+#### `run_test.sh`
 
   * **Function**: This script verifies that the LCD, LEDs, and buttons are functioning correctly.
   * **Usage**:
-    Run `test.py`:
     ```shell
     cd example
-    sudo python test.py
+    sudo bash run_test.sh
     ```
     You can also specify an image or sound for testing:
     ```shell
-    sudo python test.py --image test.jpg --sound test.mp3
+    sudo bash run_test.sh --image test2.jpg --sound test.mp3
     ```
     **Effect**: When executed, the script will display a test image on the LCD. Pressing any button will change the screen to a solid color, and the RGB LED will simultaneously change to match that color.
 
