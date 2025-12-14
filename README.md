@@ -30,7 +30,7 @@ The program can be tested after the driver is installed.
 
 ```shell
 cd Whisplay/example
-sudo python test.py
+sudo bash run_test.sh
 ```
 
 ### Driver Structure
