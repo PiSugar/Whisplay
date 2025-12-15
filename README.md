@@ -72,6 +72,17 @@ The `example` directory contains Python examples to help you get started quickly
     ```
     **Effect**: When executed, the script will display a test image on the LCD. Pressing any button will change the screen to a solid color, and the RGB LED will simultaneously change to match that color.
 
+#### `mic_test.sh`
+
+  * **Function**: This script tests the microphone functionality.
+  * **Usage**:
+    ```shell
+    cd example
+    sudo bash mic_test.sh
+    ```
+    **Effect**: The script records audio from the microphone for 10 seconds and plays it back through the speaker.
+
+
 **Note: This software currently only supports the official full version of the operating system.**
 
 ## Links
