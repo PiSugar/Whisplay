@@ -68,7 +68,7 @@ The `example` directory contains Python examples to help you get started quickly
     ```
     You can also specify an image or sound for testing:
     ```shell
-    sudo bash run_test.sh --image test2.jpg --sound test.mp3
+    sudo bash run_test.sh --image data/test2.jpg --sound data/test.mp3
     ```
     **Effect**: When executed, the script will display a test image on the LCD. Pressing any button will change the screen to a solid color, and the RGB LED will simultaneously change to match that color.
 
@@ -81,6 +81,36 @@ The `example` directory contains Python examples to help you get started quickly
     sudo bash mic_test.sh
     ```
     **Effect**: The script records audio from the microphone for 10 seconds and plays it back through the speaker.
+
+#### `test2.py`
+
+  * **Function**: This script demonstrates recording audio and playback functionality.
+  * **Usage**:
+    ```shell
+    cd example
+    sudo python3 test2.py
+    ```
+    **Effect**: The script displays an image indicating the recording stage. Pressing the button to stop recording will switch to the playback stage, displaying a different image while playing back the recorded audio. After playback, it returns to the recording stage again.
+
+#### `play_mp4.py`
+
+  * **Function**: This script plays an MP4 video file on the LCD screen.
+  * **Prerequisites**: Ensure that `ffmpeg` is installed on your system. You can install it using:
+    ```shell
+    sudo apt-get install ffmpeg
+    ```
+  * **Download Test Video**:
+    download a sample MP4 video to the `example/data` directory:
+    ```shell
+    cd example
+    wget -O data/whisplay_test.mp4 https://img-storage.pisugar.uk/whisplay_test.mp4
+    ```
+  * **Usage**:
+    execute the script in the `example` directory:
+    ```shell
+    sudo python3 play_mp4.py --file data/whisplay_test.mp4
+    ```
+    **Effect**: The specified MP4 video will be played on the LCD screen.
 
 
 **Note: This software currently only supports the official full version of the operating system.**
