@@ -100,7 +100,7 @@ def play_video(video_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--file', '-f', default=os.path.join(project_root, 'data', 'whisplay_test.mp4'))
+    parser.add_argument('--file', '-f', default=os.path.join(project_root, 'example/data', 'whisplay_test.mp4'))
     args = parser.parse_args()
     VIDEO_FILE = args.file
 
