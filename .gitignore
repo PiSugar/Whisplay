@@ -173,3 +173,6 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 .DS_Store
+
+
+Driver/WM8960-Audio-HAT/
