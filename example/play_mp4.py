@@ -2,6 +2,8 @@ import subprocess
 import os
 import sys
 import gc
+import shutil
+import argparse
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
@@ -49,34 +51,69 @@ def get_ffmpeg_cmd(video_path, width, height):
 def play_video(video_path):
     board = WhisPlayBoard()
     board.set_backlight(100)
-    
+
     width, height = board.LCD_WIDTH, board.LCD_HEIGHT
-    frame_size = width * height * 2 
+    frame_size = width * height * 2
     buffer = bytearray(frame_size)
 
-    cmd = get_ffmpeg_cmd(video_path, width, height)
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, bufsize=frame_size)
+    def start_process():
+        cmd = get_ffmpeg_cmd(video_path, width, height)
+        return subprocess.Popen(cmd, stdout=subprocess.PIPE, bufsize=frame_size)
+
+    process = start_process()
 
     gc.collect()
     gc.disable()
 
-    print(f"Playing: {video_path}")
+    print(f"Playing (loop): {video_path}. Press Ctrl+C to exit.")
     try:
         while True:
-            if process.stdout.readinto(buffer) != frame_size:
-                break
+            read = process.stdout.readinto(buffer)
+            if read != frame_size:
+                # reached EOF or error -> restart the ffmpeg process to loop
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+                try:
+                    process.wait(timeout=1)
+                except Exception:
+                    pass
+                # restart
+                process = start_process()
+                continue
             board.draw_image(0, 0, width, height, buffer)
     except KeyboardInterrupt:
         print("\nStopped.")
     finally:
-        process.terminate()
+        try:
+            process.kill()
+        except Exception:
+            pass
+        try:
+            process.wait(timeout=1)
+        except Exception:
+            pass
         gc.enable()
         board.cleanup()
         print("Exit.")
 
 if __name__ == "__main__":
-    VIDEO_FILE = "test.mp4"
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--file', '-f', default=os.path.join(project_root, 'data', 'whisplay_test.mp4'))
+    args = parser.parse_args()
+    VIDEO_FILE = args.file
+
+    if not shutil.which("ffmpeg"):
+        print("Error: ffmpeg not found in PATH.")
+        sys.exit(1)
+
     if os.path.exists(VIDEO_FILE):
-        play_video(VIDEO_FILE)
+        try:
+            play_video(VIDEO_FILE)
+        except Exception as e:
+            print(f"Error: failed to play '{VIDEO_FILE}': {e}")
+            sys.exit(1)
     else:
         print(f"Error: {VIDEO_FILE} not found.")
+        sys.exit(1)

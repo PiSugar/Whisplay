@@ -5,29 +5,29 @@ import os
 import argparse
 import subprocess
 
-# 导入驱动
+# Import driver
 sys.path.append(os.path.abspath("../Driver"))
 try:
     from WhisPlay import WhisPlayBoard
 except ImportError:
-    print("错误: 无法找到 WhisPlay 驱动。")
+    print("Error: WhisPlay driver not found.")
     sys.exit(1)
 
-# 初始化硬件
+# Initialize hardware
 board = WhisPlayBoard()
 board.set_backlight(50)
 
-# 全局变量
-img1_data = None  # 录音阶段 (test1.jpg)
-img2_data = None  # 播放阶段 (test2.jpg)
+# Global variables
+img1_data = None  # Recording stage (test1.jpg)
+img2_data = None  # Playback stage (test2.jpg)
 REC_FILE = "recorded_voice.wav"
 recording_process = None
 
 
 def load_jpg_as_rgb565(filepath, screen_width, screen_height):
-    """将图片转换为屏幕支持的 RGB565 格式"""
+    """Convert image to RGB565 format supported by the screen"""
     if not os.path.exists(filepath):
-        print(f"警告: 找不到文件 {filepath}")
+        print(f"Warning: File not found: {filepath}")
         return None
 
     img = Image.open(filepath).convert('RGB')
@@ -60,7 +60,7 @@ def load_jpg_as_rgb565(filepath, screen_width, screen_height):
 
 
 def set_wm8960_volume_stable(volume_level: str):
-    """设置 wm8960 声卡音量"""
+    """Set wm8960 sound card volume"""
     CARD_NAME = 'wm8960soundcard'
     DEVICE_ARG = f'hw:{CARD_NAME}'
     try:
@@ -69,34 +69,35 @@ def set_wm8960_volume_stable(volume_level: str):
         subprocess.run(['amixer', '-D', DEVICE_ARG, 'sset',
                        'Capture', '100'], check=False, capture_output=True)
     except Exception as e:
-        print(f"ERROR: 设置音量失败: {e}")
+        print(f"ERROR: Failed to set volume: {e}")
 
 
 def start_recording():
-    """进入录音阶段：显示 test1.jpg 并启动 arecord"""
+    """Enter recording stage: display test1.jpg and start arecord"""
     global recording_process, img1_data
-    print(">>> 状态: 进入录音阶段 (显示 test1)...")
+    print(">>> Status: Entering recording stage (displaying test1)...")
+    print(">>> Press the button to stop recording and playback...")
 
     if img1_data:
         board.draw_image(0, 0, board.LCD_WIDTH, board.LCD_HEIGHT, img1_data)
 
-    # 异步启动录音
+    # Start recording asynchronously
     command = ['arecord', '-D', 'hw:wm8960soundcard',
                '-f', 'S16_LE', '-r', '16000', '-c', '2', REC_FILE]
     recording_process = subprocess.Popen(command)
 
 
 def on_button_pressed():
-    """按键回调：停止录音 -> 变色 -> 显示 test2 -> 播放录音(阻塞) -> 回到录音"""
+    """Button callback: stop recording -> color change -> display test2 -> play recording (blocking) -> return to recording"""
     global recording_process, img1_data, img2_data
-    print(">>> 按钮按下!")
+    print(">>> Button pressed!")
 
-    # 1. 停止录音
+    # 1. Stop recording
     if recording_process and recording_process.poll() is None:
         recording_process.terminate()
         recording_process.wait()
 
-    # 2. 视觉反馈：LED 颜色切换
+    # 2. Visual feedback: LED color sequence
     color_sequence = [(255, 0, 0, 0xF800),
                       (0, 255, 0, 0x07E0), (0, 0, 255, 0x001F)]
     for r, g, b, hex_code in color_sequence:
@@ -105,55 +106,55 @@ def on_button_pressed():
         sleep(0.4)
     board.set_rgb(0, 0, 0)
 
-    # 3. 播放反馈：显示 test2.jpg 并播放录制的音频
+    # 3. Playback feedback: display test2.jpg and play recorded audio
     if img2_data:
         board.draw_image(0, 0, board.LCD_WIDTH, board.LCD_HEIGHT, img2_data)
 
-    print(f">>> 正在回放录音 (显示 test2)...")
+    print(">>> Playing back recording (displaying test2)...")
     subprocess.run(['aplay', '-D', 'plughw:wm8960soundcard', REC_FILE])
 
-    # 4. 自动回到录音阶段
+    # 4. Automatically return to recording stage
     start_recording()
 
 
-# 注册回调
+# Register callback
 board.on_button_press(on_button_pressed)
 
-# --- 主程序 ---
+# --- Main program ---
 parser = argparse.ArgumentParser()
-parser.add_argument("--img1", default="recording.jpg", help="录音阶段图片")
-parser.add_argument("--img2", default="playing.jpg", help="播放阶段图片")
+parser.add_argument("--img1", default="recording.jpg", help="Image for recording stage")
+parser.add_argument("--img2", default="playing.jpg", help="Image for playback stage")
 parser.add_argument("--test_wav", default="test.wav")
 args = parser.parse_args()
 
 try:
-    # 1. 先加载所有图片数据
-    print("正在初始化图片...")
+    # 1. Load all image data first
+    print("Initializing images...")
     img1_data = load_jpg_as_rgb565(
         args.img1, board.LCD_WIDTH, board.LCD_HEIGHT)
     img2_data = load_jpg_as_rgb565(
         args.img2, board.LCD_WIDTH, board.LCD_HEIGHT)
 
-    # 2. 音量设置
+    # 2. Set volume
     set_wm8960_volume_stable("121")
 
-    # 3. 启动时播放音频 (此时展示 test2.jpg)
+    # 3. Play startup audio at launch (displaying test2.jpg)
     if os.path.exists(args.test_wav):
         if img2_data:
             board.draw_image(0, 0, board.LCD_WIDTH,
                              board.LCD_HEIGHT, img2_data)
-        print(f">>> 播放启动音频: {args.test_wav} (显示 test2)")
+        print(f">>> Playing startup audio: {args.test_wav} (displaying test2)")
         subprocess.run(
             ['aplay', '-D', 'plughw:wm8960soundcard', args.test_wav])
 
-    # 4. 音频播完后，正式进入录音循环
+    # 4. After audio finishes, enter recording loop
     start_recording()
 
     while True:
         sleep(0.1)
 
 except KeyboardInterrupt:
-    print("\n程序退出")
+    print("\nProgram exited")
 finally:
     if recording_process:
         recording_process.terminate()

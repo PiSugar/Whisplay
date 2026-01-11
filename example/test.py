@@ -145,11 +145,11 @@ board.on_button_press(on_button_pressed)
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(
     description="Display an image and play sound on button press.")
-parser.add_argument("--image", default="test.png",
-                    help="Path to the image file (default: test.png)")
-parser.add_argument("--sound", default="test.mp3",
+parser.add_argument("--image", default="data/test.png",
+                    help="Path to the image file (default: data/test.png)")
+parser.add_argument("--sound", default="data/test.mp3",
                     # Add sound argument
-                    help="Path to the sound file (default: test.mp3)")
+                    help="Path to the sound file (default: data/test.mp3)")
 args = parser.parse_args()
 
 image_filepath = args.image
