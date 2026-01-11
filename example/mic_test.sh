@@ -27,9 +27,9 @@ echo "Using capture sound card index: $capture_card_index"
 
 # record audio from the microphone
 echo "Recording 10 seconds of audio to mic_test.wav..."
-arecord -D hw:$capture_card_index,0 -f cd -t wav -d 10 mic_test.wav
+arecord -D hw:$capture_card_index,0 -f cd -t wav -d 10 data/mic_test.wav
 echo "Recording complete."
 # play back the recorded audio
 echo "Playing back the recorded audio..."
-aplay -D hw:$playback_card_index,0 mic_test.wav
+aplay -D hw:$playback_card_index,0 data/mic_test.wav
 echo "Playback complete."

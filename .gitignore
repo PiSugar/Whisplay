@@ -176,3 +176,8 @@ cython_debug/
 
 
 Driver/WM8960-Audio-HAT/
+
+example/data/test_output.wav
+example/data/whisplay_test.mp4
+example/data/mic_test.wav
+example/data/recorded_voice.wav

@@ -20,7 +20,7 @@ board.set_backlight(50)
 # Global variables
 img1_data = None  # Recording stage (test1.jpg)
 img2_data = None  # Playback stage (test2.jpg)
-REC_FILE = "recorded_voice.wav"
+REC_FILE = "data/recorded_voice.wav"
 recording_process = None
 
 
@@ -122,9 +122,9 @@ board.on_button_press(on_button_pressed)
 
 # --- Main program ---
 parser = argparse.ArgumentParser()
-parser.add_argument("--img1", default="recording.jpg", help="Image for recording stage")
-parser.add_argument("--img2", default="playing.jpg", help="Image for playback stage")
-parser.add_argument("--test_wav", default="test.wav")
+parser.add_argument("--img1", default="data/recording.jpg", help="Image for recording stage")
+parser.add_argument("--img2", default="data/playing.jpg", help="Image for playback stage")
+parser.add_argument("--test_wav", default="data/test.wav")
 args = parser.parse_args()
 
 try:
