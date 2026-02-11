@@ -224,21 +224,21 @@ class WhisPlayBoard:
         self.green_pwm.start(0)
         self.blue_pwm.start(0)
 
-        # Initialize button (input + event detection + pull-up)
+        # Initialize button (input with pull-up, polled for state changes)
         chip_num, line_offset = pin_map[self.BUTTON_PIN]
         chip = self._gpio_chips[chip_num]
         btn_line = chip.get_line(line_offset)
         try:
             btn_line.request(
                 consumer='whisplay-btn',
-                type=gpiod.LINE_REQ_EV_BOTH_EDGES,
+                type=gpiod.LINE_REQ_DIR_IN,
                 flags=gpiod.LINE_REQ_FLAG_BIAS_PULL_UP
             )
         except Exception:
             # Fallback: no internal pull-up (relies on external pull-up resistor)
             btn_line.request(
                 consumer='whisplay-btn',
-                type=gpiod.LINE_REQ_EV_BOTH_EDGES
+                type=gpiod.LINE_REQ_DIR_IN
             )
         self._gpio_lines[self.BUTTON_PIN] = btn_line
 
@@ -254,47 +254,30 @@ class WhisPlayBoard:
         self.spi.mode = 0b00
 
     def _button_monitor_radxa(self):
-        """Button event polling thread for Radxa platform (with debounce)"""
+        """Button state polling thread for Radxa platform.
+        Reads GPIO value directly (like RPi's GPIO.input), avoiding edge event ambiguity.
+        HIGH (1) = pressed, LOW (0) = released (matching RPi behavior).
+        10ms poll interval provides natural debounce.
+        """
         btn_line = self._gpio_lines[self.BUTTON_PIN]
-        last_press_time = 0
-        last_release_time = 0
-        DEBOUNCE_SEC = 0.3  # 300ms debounce — long enough to cover mechanical bounce
+        last_state = btn_line.get_value()
         while self._btn_thread_running:
             try:
-                if btn_line.event_wait(sec=0, nsec=100_000_000):  # 100ms timeout
-                    event = btn_line.event_read()
-                    now = time.time()
-                    if event.type == gpiod.LineEvent.FALLING_EDGE:
-                        # Button pressed (pull-up: HIGH to LOW = FALLING)
-                        if now - last_press_time >= DEBOUNCE_SEC:
-                            last_press_time = now
-                            if self.button_press_callback:
-                                self.button_press_callback()
-                                # Update timestamp after callback, so events queued during callback fail debounce
-                                last_press_time = time.time()
-                                # Only drain when no release callback (avoid consuming release events)
-                                if not self.button_release_callback:
-                                    self._drain_button_events(btn_line)
-                    elif event.type == gpiod.LineEvent.RISING_EDGE:
-                        # Button released (LOW to HIGH = RISING)
-                        if now - last_release_time >= DEBOUNCE_SEC:
-                            last_release_time = now
-                            if self.button_release_callback:
-                                self.button_release_callback()
-                                last_release_time = time.time()
-                                # Safe to drain after release
-                                self._drain_button_events(btn_line)
+                state = btn_line.get_value()
+                if state != last_state:
+                    last_state = state
+                    if state == 1:
+                        # Button pressed (HIGH)
+                        if self.button_press_callback:
+                            self.button_press_callback()
+                    else:
+                        # Button released (LOW)
+                        if self.button_release_callback:
+                            self.button_release_callback()
             except Exception:
                 if self._btn_thread_running:
-                    time.sleep(0.1)
-
-    def _drain_button_events(self, btn_line):
-        """Drain queued button events from the event buffer"""
-        try:
-            while btn_line.event_wait(sec=0, nsec=1_000_000):  # 1ms timeout
-                btn_line.event_read()
-        except Exception:
-            pass
+                    pass
+            time.sleep(0.01)  # 10ms poll interval
 
     # ==================== Cross-platform GPIO Helpers ====================
     def _gpio_output(self, pin, value):
