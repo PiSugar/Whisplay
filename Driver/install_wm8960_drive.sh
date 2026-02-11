@@ -18,11 +18,11 @@ fi
 enable_spi() {
     echo "Attempting to enable SPI interface..."
     if which raspi-config > /dev/null 2>&1; then
-        # 严格使用 raspi-config 启用 SPI
+        # Strictly use raspi-config to enable SPI
         sudo raspi-config nonint do_spi 0
         echo "SPI interface enabled successfully via raspi-config."
     else
-        # 未找到 raspi-config 则跳出提示并退出
+        # raspi-config not found, show error and exit
         echo "ERROR: raspi-config not found. Cannot automatically enable SPI interface." 1>&2
         echo "Please install raspi-config or enable SPI manually before running." 1>&2
         exit 1
@@ -30,7 +30,7 @@ enable_spi() {
 }
 
 enable_spi
-# 解压本地压缩包
+# Extract local archive
 unzip -o WM8960-Audio-HAT.zip
 cd WM8960-Audio-HAT
 
