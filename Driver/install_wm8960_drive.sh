@@ -6,11 +6,6 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 is_Raspberry=$(cat /proc/device-tree/model | awk  '{print $1}')
-is_radxa=$(cat /proc/device-tree/model | awk  '{print $1}')
-if [ "x${is_radxa}" == "xRadxa" ] ; then
-  echo "Sorry, this drivers only works on raspberry pi, if you want to install on radxa, please try using install_radxa_zero3w.sh"
-  exit 1
-fi
 if [ "x${is_Raspberry}" != "xRaspberry" ] ; then
   echo "Sorry, this drivers only works on raspberry pi"
   exit 1
