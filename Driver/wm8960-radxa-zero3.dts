@@ -1,0 +1,94 @@
+/*
+ * WM8960 Sound Card Device Tree Overlay - Radxa ZERO 3W (RK3566)
+ *
+ * Features:
+ *   - Configure WM8960 codec on I2C3 bus (address 0x1a)
+ *   - Enable I2S3 interface (pin mux mode 0)
+ *   - Create simple-audio-card sound card
+ *
+ * 40-pin Header Pin Mapping:
+ *   PIN_3  (SDA)  -> I2C3_SDA_M0
+ *   PIN_5  (SCL)  -> I2C3_SCL_M0
+ *   PIN_12 (BCLK) -> I2S3_SCLK_M0
+ *   PIN_35 (LRCK) -> I2S3_LRCK_RX_M0
+ *   PIN_38 (SDI)  -> I2S3_SDI_M0
+ *   PIN_40 (SDO)  -> I2S3_SDO_M0
+ *
+ * Compile:
+ *   dtc -@ -I dts -O dtb -o wm8960-radxa-zero3.dtbo wm8960-radxa-zero3.dts
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "rockchip,rk3566";
+
+    /* Add WM8960 codec on I2C3 */
+    fragment@0 {
+        target = <&i2c3>;
+        __overlay__ {
+            status = "okay";
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            wm8960: wm8960@1a {
+                compatible = "wlf,wm8960";
+                reg = <0x1a>;
+                #sound-dai-cells = <0>;
+                wlf,shared-lrclk;
+            };
+        };
+    };
+
+    /* Enable I2S3 audio interface */
+    fragment@1 {
+        target = <&i2s3_2ch>;
+        __overlay__ {
+            status = "okay";
+            rockchip,clk-trcm = <1>;
+            pinctrl-names = "default";
+            pinctrl-0 = <&i2s3m0_sclk
+                         &i2s3m0_lrck
+                         &i2s3m0_sdi
+                         &i2s3m0_sdo>;
+        };
+    };
+
+    /* Create WM8960 sound card */
+    fragment@2 {
+        target-path = "/";
+        __overlay__ {
+            wm8960_sound: wm8960-sound {
+                status = "okay";
+                compatible = "simple-audio-card";
+                simple-audio-card,name = "wm8960-soundcard";
+                simple-audio-card,format = "i2s";
+                simple-audio-card,mclk-fs = <256>;
+
+                simple-audio-card,widgets =
+                    "Microphone", "Mic Jack",
+                    "Speaker", "Speaker",
+                    "Headphone", "Headphone Jack";
+
+                simple-audio-card,routing =
+                    "Headphone Jack", "HP_L",
+                    "Headphone Jack", "HP_R",
+                    "Speaker", "SPK_LP",
+                    "Speaker", "SPK_LN",
+                    "Speaker", "SPK_RP",
+                    "Speaker", "SPK_RN",
+                    "LINPUT1", "Mic Jack",
+                    "RINPUT1", "Mic Jack";
+
+                simple-audio-card,cpu {
+                    sound-dai = <&i2s3_2ch>;
+                };
+
+                simple-audio-card,codec {
+                    sound-dai = <&wm8960>;
+                };
+            };
+        };
+    };
+};
