@@ -9,6 +9,7 @@
 **支持平台：**
 - Raspberry Pi（所有带 40-pin 排针的型号）
 - Radxa ZERO 3W (RK3566)
+- Radxa Cubie A7Z (Allwinner A733)
 
 更多详细信息请参考 [Whisplay HAT 文档](https://docs.pisugar.com/docs/product-wiki/whisplay/intro)
 
@@ -64,6 +65,35 @@ cd Whisplay/example
 sudo bash run_test.sh
 ```
 
+#### Radxa Cubie A7Z
+
+> ⚠️ **重要硬件警告（仅 A7Z）**  
+> 由于电路不兼容，Whisplay HAT 的物理按键在 Radxa Cubie A7Z 上**不可使用**。  
+> **请勿点击按键**，否则可能导致 A7Z 立即断电。
+
+克隆项目后，进入 Driver 目录并运行 Cubie A7Z 专用安装脚本。
+
+```bash
+git clone https://github.com/PiSugar/Whisplay.git --depth 1
+cd Whisplay/Driver
+sudo bash install_radxa_cubie_a7z.sh
+sudo reboot
+```
+
+安装脚本将执行以下操作：
+1. 安装 Python 依赖（`python3-libgpiod`、`python3-spidev`、`python3-pil`、`python3-pygame`）
+2. 启用 SPI1 overlay（用于 LCD 显示屏）
+3. 启用 TWI7 overlay（用于 WM8960 I2C 通信）
+4. 编译并安装 WM8960 音频 overlay 和内核模块
+5. 配置 ALSA 混音器
+
+重启后，运行测试：
+
+```shell
+cd Whisplay/example
+sudo bash run_test.sh
+```
+
 ### 驱动程序结构
 
 所有驱动文件都位于 `Driver` 目录下，主要包括：
@@ -80,6 +110,7 @@ sudo bash run_test.sh
   * **安装**:
     - **Raspberry Pi**: 运行 `install_wm8960_drive.sh`
     - **Radxa ZERO 3W**: 运行 `install_radxa_zero3w.sh`
+    - **Radxa Cubie A7Z**: 运行 `install_radxa_cubie_a7z.sh`
 
     ```shell
     cd Driver
@@ -87,12 +118,19 @@ sudo bash run_test.sh
     sudo bash install_wm8960_drive.sh
     # Radxa ZERO 3W:
     sudo bash install_radxa_zero3w.sh
+    # Radxa Cubie A7Z:
+    sudo bash install_radxa_cubie_a7z.sh
     ```
 
 #### 3. `wm8960-radxa-zero3.dts`（仅限 Radxa）
 
   * **功能**: Radxa ZERO 3W (RK3566) 上 WM8960 编解码器的设备树 overlay 源文件，配置 I2C3 和 I2S3 音频接口。
   * **说明**: 此文件会由 `install_radxa_zero3w.sh` 自动编译并安装。
+
+#### 4. `wm8960-cubie-a7z.dts`（仅限 Radxa）
+
+  * **功能**: Radxa Cubie A7Z (Allwinner A733) 上 WM8960 编解码器的设备树 overlay 源文件，配置 TWI7 和 I2S0 音频接口。
+  * **说明**: 此文件会由 `install_radxa_cubie_a7z.sh` 自动编译并安装。
 
 
 ## 示例程序
@@ -157,6 +195,9 @@ sudo bash run_test.sh
 **注意：本软件目前支持：**
 - **Raspberry Pi**: 官方 full 版本操作系统
 - **Radxa ZERO 3W**: Debian 12 (bookworm) 官方镜像
+- **Radxa Cubie A7Z**: Debian 11 (bullseye) 官方镜像
+
+**A7Z 安全提示：** 在 Radxa Cubie A7Z 上，请**不要点击 Whisplay HAT 的物理按键**。由于电路不兼容，点击可能导致设备立即断电。
 
 ## 相关链接
 

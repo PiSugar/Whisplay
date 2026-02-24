@@ -25,9 +25,20 @@ fi
 
 echo "Using capture sound card index: $capture_card_index"
 
+# Detect platform for sample rate selection
+# Radxa Cubie A7Z (Allwinner A733) I2S0 only supports 48kHz family rates
+COMPAT=$(cat /proc/device-tree/compatible 2>/dev/null | tr '\0' '\n' || true)
+if echo "$COMPAT" | grep -qi "cubie-a7z"; then
+  RECORD_FMT="-f S16_LE -r 48000 -c 2"
+  echo "Detected Radxa Cubie A7Z: using 48000 Hz sample rate"
+else
+  RECORD_FMT="-f cd"
+  echo "Using CD quality (44100 Hz) sample rate"
+fi
+
 # record audio from the microphone
 echo "Recording 10 seconds of audio to mic_test.wav..."
-arecord -D hw:$capture_card_index,0 -f cd -t wav -d 10 data/mic_test.wav
+arecord -D hw:$capture_card_index,0 $RECORD_FMT -t wav -d 10 data/mic_test.wav
 echo "Recording complete."
 # play back the recorded audio
 echo "Playing back the recorded audio..."
