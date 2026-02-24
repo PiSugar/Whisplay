@@ -66,6 +66,10 @@ sudo bash run_test.sh
 
 #### Radxa Cubie A7Z
 
+> ⚠️ **Important Hardware Warning (A7Z only)**  
+> Due to circuit incompatibility, the physical button on Whisplay HAT is **not safe to use on Radxa Cubie A7Z**.  
+> **Do not press the button**, otherwise the A7Z may shut down / lose power immediately.
+
 After cloning the github project, navigate to the Driver directory and use the Cubie A7Z-specific script to install.
 
 ```bash
@@ -187,6 +191,8 @@ The `example` directory contains Python examples to help you get started quickly
 - **Raspberry Pi**: Official full version of the operating system
 - **Radxa ZERO 3W**: Debian 12 (bookworm) official image
 - **Radxa Cubie A7Z**: Debian 11 (bullseye) official image
+
+**A7Z Safety Notice:** On Radxa Cubie A7Z, please **do not click the physical button** on Whisplay HAT. Circuit incompatibility may cause immediate power-off.
 
 ## Links
 
