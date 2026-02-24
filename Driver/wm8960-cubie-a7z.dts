@@ -127,7 +127,7 @@ Requires TWI7 overlay (sun60iw2p1-twi7.dtbo) to be enabled.
 	i2s0_cpu: soundcard-mach,cpu {
 		sound-dai = <&i2s0_plat>;
 		soundcard-mach,pll-fs = <1>;
-		soundcard-mach,mclk-fs = <0>;
+		soundcard-mach,mclk-fs = <256>;
 	};
 
 	i2s0_codec: soundcard-mach,codec {
