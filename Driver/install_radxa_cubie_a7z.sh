@@ -244,11 +244,11 @@ EOF
     echo "  WM8960 mixer configured and saved (output routing enabled)"
 else
     echo "  WM8960 sound card not detected yet"
-    echo "  Default ALSA config will use card 1 (takes effect after reboot)"
+    echo "  Default ALSA config will use card 0 (takes effect after reboot)"
     cat > /etc/asound.conf << 'EOF'
-defaults.pcm.card 1
+defaults.pcm.card 0
 defaults.pcm.device 0
-defaults.ctl.card 1
+defaults.ctl.card 0
 EOF
 fi
 
