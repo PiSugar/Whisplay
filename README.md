@@ -9,6 +9,7 @@ This project provides comprehensive driver support for the **PiSugar Whisplay Ha
 **Supported Platforms:**
 - Raspberry Pi (all models with 40-pin header)
 - Radxa ZERO 3W (RK3566)
+- Radxa Cubie A7Z (Allwinner A733)
 
 More Details please refer to [Whisplay HAT Docs](https://docs.pisugar.com/docs/product-wiki/whisplay/intro)
 
@@ -63,13 +64,38 @@ cd Whisplay/example
 sudo bash run_test.sh
 ```
 
+#### Radxa Cubie A7Z
+
+After cloning the github project, navigate to the Driver directory and use the Cubie A7Z-specific script to install.
+
+```bash
+git clone https://github.com/PiSugar/Whisplay.git --depth 1
+cd Whisplay/Driver
+sudo bash install_radxa_cubie_a7z.sh
+sudo reboot
+```
+
+The installation script will:
+1. Install Python dependencies (`python3-libgpiod`, `python3-spidev`, `python3-pil`, `python3-pygame`)
+2. Enable SPI1 overlay (for LCD display)
+3. Enable TWI7 overlay (for WM8960 I2C communication)
+4. Compile and install WM8960 audio overlay and kernel module
+5. Configure ALSA mixer
+
+After rebooting, test the setup:
+
+```shell
+cd Whisplay/example
+sudo bash run_test.sh
+```
+
 ### Driver Structure
 
 All driver files are located in the `Driver` directory and primarily include:
 
 #### 1. `Whisplay.py`
 
-  * **Function**: This script encapsulates the LCD display, physical buttons, and LED indicators into easy-to-use Python objects, simplifying hardware operations. It **automatically detects the platform** (Raspberry Pi or Radxa ZERO 3W) and uses the appropriate GPIO library.
+  * **Function**: This script encapsulates the LCD display, physical buttons, and LED indicators into easy-to-use Python objects, simplifying hardware operations. It **automatically detects the platform** (Raspberry Pi, Radxa ZERO 3W, or Radxa Cubie A7Z) and uses the appropriate GPIO library.
   * **Quick Verification**: Refer to `example/test.py` to quickly test the LCD, LED, and button functions.
 
 #### 2. WM8960 Audio Driver
@@ -79,6 +105,7 @@ All driver files are located in the `Driver` directory and primarily include:
   * **Installation**:
     - **Raspberry Pi**: Run `install_wm8960_drive.sh`
     - **Radxa ZERO 3W**: Run `install_radxa_zero3w.sh`
+    - **Radxa Cubie A7Z**: Run `install_radxa_cubie_a7z.sh`
 
     ```shell
     cd Driver
@@ -86,12 +113,15 @@ All driver files are located in the `Driver` directory and primarily include:
     sudo bash install_wm8960_drive.sh
     # For Radxa ZERO 3W:
     sudo bash install_radxa_zero3w.sh
+    # For Radxa Cubie A7Z:
+    sudo bash install_radxa_cubie_a7z.sh
     ```
 
-#### 3. `wm8960-radxa-zero3.dts` (Radxa only)
+#### 3. Device Tree Overlays (Radxa only)
 
-  * **Function**: Device tree overlay source for the WM8960 codec on Radxa ZERO 3W (RK3566), configuring I2C3 and I2S3 for audio.
-  * **Note**: This is automatically compiled and installed by `install_radxa_zero3w.sh`.
+  * `wm8960-radxa-zero3.dts` - DT overlay for WM8960 codec on Radxa ZERO 3W (RK3566), configuring I2C3 and I2S3.
+  * `wm8960-cubie-a7z.dts` - DT overlay for WM8960 codec on Radxa Cubie A7Z (Allwinner A733), configuring TWI7 and I2S0.
+  * **Note**: These are automatically compiled and installed by the respective install scripts.
 
 
 ## Example Programs
@@ -156,6 +186,7 @@ The `example` directory contains Python examples to help you get started quickly
 **Note: This software currently supports:**
 - **Raspberry Pi**: Official full version of the operating system
 - **Radxa ZERO 3W**: Debian 12 (bookworm) official image
+- **Radxa Cubie A7Z**: Debian 11 (bullseye) official image
 
 ## Links
 

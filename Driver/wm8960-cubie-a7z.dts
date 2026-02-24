@@ -1,0 +1,136 @@
+/*
+ * WM8960 Sound Card Device Tree Overlay - Radxa Cubie A7Z (Allwinner A733)
+ *
+ * Features:
+ *   - Configure WM8960 codec on TWI7 (I2C7) bus (address 0x1a)
+ *   - Enable I2S0 interface with pin mux
+ *   - Create sunxi sound machine card
+ *
+ * 40-pin Header Pin Mapping:
+ *   PIN_3  (SDA)  -> TWI7_SDA (PJ22)
+ *   PIN_5  (SCL)  -> TWI7_SCL (PJ23)
+ *   PIN_12 (BCLK) -> I2S0_BCLK (PB5)
+ *   PIN_35 (LRCK) -> I2S0_LRCK (PB6)
+ *   PIN_36 (MCLK) -> I2S0_MCLK (PB4)
+ *   PIN_38 (DIN)  -> I2S0_DIN0 (PB8)
+ *   PIN_40 (DOUT) -> I2S0_DOUT0 (PB7)
+ *
+ * Note: TWI7 overlay (sun60iw2p1-twi7.dtbo) must be enabled separately.
+ *
+ * Compile:
+ *   dtc -@ -I dts -O dtb -o wm8960-cubie-a7z.dtbo wm8960-cubie-a7z.dts
+ */
+
+/dts-v1/;
+/plugin/;
+
+/{
+	metadata {
+		title = "Enable WM8960 Sound Card for WhisPlay HAT";
+		compatible = "radxa,cubie-a7z";
+		category = "misc";
+		exclusive = "i2s0_plat", "i2s0_mach", "PB4", "PB5", "PB6", "PB8", "PB7";
+		description = "Enable WM8960 sound card for WhisPlay HAT on Radxa Cubie A7Z.
+I2S0 pins: pin_36(mclk), pin_12(bclk), pin_35(lrck), pin_38(din0), pin_40(dout0).
+WM8960 codec on TWI7 (pin_3 SDA, pin_5 SCL) at address 0x1a.
+Requires TWI7 overlay (sun60iw2p1-twi7.dtbo) to be enabled.
+";
+	};
+};
+
+/* Add WM8960 codec on TWI7 I2C bus */
+&twi7 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	wm8960: wm8960@1a {
+		#sound-dai-cells = <0>;
+		compatible = "wlf,wm8960";
+		reg = <0x1a>;
+		wlf,shared-lrclk;
+		status = "okay";
+	};
+};
+
+/* I2S0 pin configuration */
+&pio {
+	i2s0_pins_a: i2s0@0 {
+		pins = "PB4";
+		function = "i2s0_mclk";
+		allwinner,drive = <1>;
+		bias-disable;
+	};
+
+	i2s0_pins_b: i2s0@1 {
+		pins = "PB5";
+		function = "i2s0_bclk";
+		allwinner,drive = <1>;
+		bias-disable;
+	};
+
+	i2s0_pins_c: i2s0@2 {
+		pins = "PB6";
+		function = "i2s0_lrck";
+		allwinner,drive = <1>;
+		bias-disable;
+	};
+
+	i2s0_pins_d: i2s0@3 {
+		pins = "PB8";
+		function = "i2s0_din0";
+		allwinner,drive = <1>;
+		bias-pull-down;
+	};
+
+	i2s0_pins_e: i2s0@4 {
+		pins = "PB7";
+		function = "i2s0_dout0";
+		allwinner,drive = <1>;
+		bias-pull-down;
+	};
+
+	i2s0_pins_f: i2s0@5 {
+		pins = "PB4", "PB5", "PB6", "PB8", "PB7";
+		function = "io_disabled";
+		allwinner,drive = <1>;
+		bias-disable;
+	};
+};
+
+/* Enable I2S0 platform driver with pin mux */
+&i2s0_plat {
+	tdm-num = <0>;
+	tx-pin = <0>;
+	rx-pin = <0>;
+
+	tx-hub-en;
+	rx-sync-en;
+
+	pinctrl-used;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&i2s0_pins_a &i2s0_pins_b &i2s0_pins_c &i2s0_pins_d &i2s0_pins_e>;
+	pinctrl-1 = <&i2s0_pins_f>;
+
+	status = "okay";
+};
+
+/* Configure I2S0 machine driver with WM8960 codec */
+&i2s0_mach {
+	soundcard-mach,format = "i2s";
+	soundcard-mach,frame-master = <&i2s0_cpu>;
+	soundcard-mach,bitclock-master = <&i2s0_cpu>;
+	soundcard-mach,name = "wm8960-soundcard";
+	soundcard-mach,slot-num = <2>;
+	soundcard-mach,slot-width = <32>;
+	status = "okay";
+
+	i2s0_cpu: soundcard-mach,cpu {
+		sound-dai = <&i2s0_plat>;
+		soundcard-mach,pll-fs = <1>;
+		soundcard-mach,mclk-fs = <0>;
+	};
+
+	i2s0_codec: soundcard-mach,codec {
+		sound-dai = <&wm8960>;
+	};
+};
