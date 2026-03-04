@@ -196,10 +196,16 @@ The `example` directory contains Python examples to help you get started quickly
 
 ## Documentation and Related Projects
 
-- [PiSugar Whisplay Docs](https://docs.pisugar.com/docs/product-wiki/whisplay/intro)
+### Official Documentation
 
+[PiSugar Whisplay Docs](https://docs.pisugar.com/docs/product-wiki/whisplay/intro)
 
-- [whisplay-ai-chatbot](https://github.com/PiSugar/whisplay-ai-chatbot) by PiSugar, a project that uses PiSugar Whisplay HAT as a display and voice control interface for an AI chatbot.
-- [whisplay-lumon-mdr-ui](https://github.com/PiSugar/whisplay-lumon-mdr-ui) by PiSugar, building a tiny Lumon MDR device.
-- [pizero-openclaw](https://github.com/sebastianvkl/pizero-openclaw) by Sebastianvkl, a project that uses PiSugar Whisplay HAT as a display and voice control interface for openclaw.
-- [pisugar-wx](https://github.com/hemna/pisugar-wx) by Hemna, a project that uses PiSugar Whisplay HAT to display weather information.
+### Related Projects
+
+| Project | Author | Description |
+|---------|--------|-------------|
+| [whisplay-ai-chatbot](https://github.com/PiSugar/whisplay-ai-chatbot) | PiSugar | AI chatbot using Whisplay HAT as display and voice control interface |
+| [whisplay-lumon-mdr-ui](https://github.com/PiSugar/whisplay-lumon-mdr-ui) | PiSugar | Tiny Lumon MDR device implementation |
+| [pizero-openclaw](https://github.com/sebastianvkl/pizero-openclaw) | Sebastianvkl | Openclaw project with Whisplay HAT display and voice control |
+| [pisugar-wx](https://github.com/hemna/pisugar-wx) | Hemna | Weather information display on Whisplay HAT |
+
