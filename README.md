@@ -194,8 +194,12 @@ The `example` directory contains Python examples to help you get started quickly
 
 **A7Z Safety Notice:** On Radxa Cubie A7Z, please **do not click the physical button** on Whisplay HAT. Circuit incompatibility may cause immediate power-off.
 
-## Links
+## Documentation and Related Projects
 
 - [PiSugar Whisplay Docs](https://docs.pisugar.com/docs/product-wiki/whisplay/intro)
-- [whisplay-ai-chatbot](https://github.com/PiSugar/whisplay-ai-chatbot)
-- [whisplay-lumon-mdr-ui](https://github.com/PiSugar/whisplay-lumon-mdr-ui)
+
+
+- [whisplay-ai-chatbot](https://github.com/PiSugar/whisplay-ai-chatbot) by PiSugar, a project that uses PiSugar Whisplay HAT as a display and voice control interface for an AI chatbot.
+- [whisplay-lumon-mdr-ui](https://github.com/PiSugar/whisplay-lumon-mdr-ui) by PiSugar, building a tiny Lumon MDR device.
+- [pizero-openclaw](https://github.com/sebastianvkl/pizero-openclaw) by Sebastianvkl, a project that uses PiSugar Whisplay HAT as a display and voice control interface for openclaw.
+- [pisugar-wx](https://github.com/hemna/pisugar-wx) by Hemna, a project that uses PiSugar Whisplay HAT to display weather information.
