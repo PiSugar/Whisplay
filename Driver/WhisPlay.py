@@ -235,12 +235,25 @@ class WhisPlayBoard:
         return can_drive_low
 
     def _rpi_set_rgb_sink_state(self, pin, value):
-        """Drive active-low RGB LED pins using either strong-high or input-pulldown-low."""
-        if value:
-            GPIO.setup(pin, GPIO.OUT)
-            GPIO.output(pin, GPIO.HIGH)
-        else:
-            GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        """Drive active-low RGB LED pins using either strong-high or input-pulldown-low.
+        NOTICE: rpi-lgpio 0.2/0.6 on RPi5 RP1 has issues switching between
+        IN/OUT modes in concurrent SoftPWM threads (GPIO busy / not allocated).
+        A lock serializes access and try/except prevents thread death."""
+        if not hasattr(self, '_rgb_lock'):
+            import threading
+            self._rgb_lock = threading.Lock()
+        with self._rgb_lock:
+            try:
+                if value:
+                    GPIO.setup(pin, GPIO.OUT)
+                    GPIO.output(pin, GPIO.HIGH)
+                else:
+                    GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+            except Exception:
+                try:
+                    GPIO.output(pin, GPIO.HIGH if value else GPIO.LOW)
+                except Exception:
+                    pass
 
     def _rpi_set_rgb_output_state(self, pin, value):
         """Drive active-low RGB LED pins using normal push-pull output mode."""
