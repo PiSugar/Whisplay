@@ -247,6 +247,11 @@ class WhisPlayBoard:
         GPIO.setup(pin, GPIO.OUT)
         GPIO.output(pin, GPIO.HIGH if value else GPIO.LOW)
 
+    def _rpi_set_backlight_state(self, value):
+        """Drive active-low LCD backlight pin using plain GPIO state changes."""
+        GPIO.setup(self.LED_PIN, GPIO.OUT)
+        GPIO.output(self.LED_PIN, GPIO.HIGH if value else GPIO.LOW)
+
     def _create_rpi_rgb_pwm(self, pin, color_name):
         """Create RGB PWM on Raspberry Pi, with a weak sink fallback for damaged GPIO pins."""
         if self._rpi_pin_can_drive_low(pin):
@@ -432,7 +437,11 @@ class WhisPlayBoard:
         if self.backlight_mode:  # PWM mode
             if self.backlight_pwm is None:
                 if self.platform == "rpi":
-                    self.backlight_pwm = GPIO.PWM(self.LED_PIN, 1000)
+                    self.backlight_pwm = SoftPWM(
+                        self._rpi_set_backlight_state,
+                        1000,
+                        stop_value=1,
+                    )
                 elif self.platform == "radxa":
                     led_line = self._gpio_lines[self.LED_PIN]
                     self.backlight_pwm = SoftPWM(led_line.set_value, 1000, stop_value=1)
@@ -456,7 +465,11 @@ class WhisPlayBoard:
 
         if mode:  # Switch to PWM mode
             if self.platform == "rpi":
-                self.backlight_pwm = GPIO.PWM(self.LED_PIN, 1000)
+                self.backlight_pwm = SoftPWM(
+                    self._rpi_set_backlight_state,
+                    1000,
+                    stop_value=1,
+                )
             elif self.platform == "radxa":
                 led_line = self._gpio_lines[self.LED_PIN]
                 self.backlight_pwm = SoftPWM(led_line.set_value, 1000, stop_value=1)
