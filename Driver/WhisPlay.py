@@ -105,9 +105,10 @@ def _detect_radxa_board():
 class SoftPWM:
     """Software PWM implementation for GPIO platforms without hardware PWM support"""
 
-    def __init__(self, set_value_func, frequency=100):
+    def __init__(self, set_value_func, frequency=100, stop_value=0):
         self._set_value = set_value_func
         self.frequency = frequency
+        self.stop_value = stop_value
         self.duty_cycle = 0.0
         self._running = False
         self._thread = None
@@ -126,7 +127,7 @@ class SoftPWM:
         if self._thread:
             self._thread.join(timeout=1)
         try:
-            self._set_value(0)
+            self._set_value(self.stop_value)
         except Exception:
             pass
 
@@ -203,10 +204,10 @@ class WhisPlayBoard:
         GPIO.output(self.LED_PIN, GPIO.LOW)  # Enable backlight
 
         # Initialize RGB LED pins
-        GPIO.setup([self.RED_PIN, self.GREEN_PIN, self.BLUE_PIN], GPIO.OUT)
-        self.red_pwm = GPIO.PWM(self.RED_PIN, 100)
-        self.green_pwm = GPIO.PWM(self.GREEN_PIN, 100)
-        self.blue_pwm = GPIO.PWM(self.BLUE_PIN, 100)
+        GPIO.setup([self.RED_PIN, self.GREEN_PIN, self.BLUE_PIN], GPIO.OUT, initial=GPIO.HIGH)
+        self.red_pwm = self._create_rpi_rgb_pwm(self.RED_PIN, "red")
+        self.green_pwm = self._create_rpi_rgb_pwm(self.GREEN_PIN, "green")
+        self.blue_pwm = self._create_rpi_rgb_pwm(self.BLUE_PIN, "blue")
         self.red_pwm.start(0)
         self.green_pwm.start(0)
         self.blue_pwm.start(0)
@@ -222,6 +223,49 @@ class WhisPlayBoard:
         self.spi.open(0, 0)
         self.spi.max_speed_hz = 100_000_000
         self.spi.mode = 0b00
+
+    def _rpi_pin_can_drive_low(self, pin):
+        """Check whether a Raspberry Pi GPIO can actually sink current when driven low."""
+        GPIO.setup(pin, GPIO.OUT, initial=GPIO.HIGH)
+        time.sleep(0.02)
+        GPIO.output(pin, GPIO.LOW)
+        time.sleep(0.02)
+        can_drive_low = GPIO.input(pin) == GPIO.LOW
+        GPIO.setup(pin, GPIO.OUT, initial=GPIO.HIGH)
+        return can_drive_low
+
+    def _rpi_set_rgb_sink_state(self, pin, value):
+        """Drive active-low RGB LED pins using either strong-high or input-pulldown-low."""
+        if value:
+            GPIO.setup(pin, GPIO.OUT)
+            GPIO.output(pin, GPIO.HIGH)
+        else:
+            GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+
+    def _rpi_set_rgb_output_state(self, pin, value):
+        """Drive active-low RGB LED pins using normal push-pull output mode."""
+        GPIO.setup(pin, GPIO.OUT)
+        GPIO.output(pin, GPIO.HIGH if value else GPIO.LOW)
+
+    def _create_rpi_rgb_pwm(self, pin, color_name):
+        """Create RGB PWM on Raspberry Pi, with a weak sink fallback for damaged GPIO pins."""
+        if self._rpi_pin_can_drive_low(pin):
+            return SoftPWM(
+                lambda value, gpio_pin=pin: self._rpi_set_rgb_output_state(gpio_pin, value),
+                100,
+                stop_value=1,
+            )
+
+        print(
+            f"Warning: GPIO pin {pin} for {color_name} LED cannot drive LOW reliably; "
+            "using input-pulldown RGB workaround."
+        )
+        self._rpi_set_rgb_sink_state(pin, 1)
+        return SoftPWM(
+            lambda value, gpio_pin=pin: self._rpi_set_rgb_sink_state(gpio_pin, value),
+            100,
+            stop_value=1,
+        )
 
     # ==================== Radxa Initialization ====================
     def _init_radxa(self):
@@ -264,9 +308,9 @@ class WhisPlayBoard:
         red_line = self._gpio_lines[self.RED_PIN]
         green_line = self._gpio_lines[self.GREEN_PIN]
         blue_line = self._gpio_lines[self.BLUE_PIN]
-        self.red_pwm = SoftPWM(red_line.set_value, 100)
-        self.green_pwm = SoftPWM(green_line.set_value, 100)
-        self.blue_pwm = SoftPWM(blue_line.set_value, 100)
+        self.red_pwm = SoftPWM(red_line.set_value, 100, stop_value=1)
+        self.green_pwm = SoftPWM(green_line.set_value, 100, stop_value=1)
+        self.blue_pwm = SoftPWM(blue_line.set_value, 100, stop_value=1)
         self.red_pwm.start(0)
         self.green_pwm.start(0)
         self.blue_pwm.start(0)
@@ -391,7 +435,7 @@ class WhisPlayBoard:
                     self.backlight_pwm = GPIO.PWM(self.LED_PIN, 1000)
                 elif self.platform == "radxa":
                     led_line = self._gpio_lines[self.LED_PIN]
-                    self.backlight_pwm = SoftPWM(led_line.set_value, 1000)
+                    self.backlight_pwm = SoftPWM(led_line.set_value, 1000, stop_value=1)
                 self.backlight_pwm.start(100)
             if 0 <= brightness <= 100:
                 duty_cycle = 100 - brightness
@@ -415,7 +459,7 @@ class WhisPlayBoard:
                 self.backlight_pwm = GPIO.PWM(self.LED_PIN, 1000)
             elif self.platform == "radxa":
                 led_line = self._gpio_lines[self.LED_PIN]
-                self.backlight_pwm = SoftPWM(led_line.set_value, 1000)
+                self.backlight_pwm = SoftPWM(led_line.set_value, 1000, stop_value=1)
             self.backlight_pwm.start(100)
         else:  # Switch to simple on/off mode
             if self.backlight_pwm is not None:
