@@ -6,6 +6,11 @@
 
 This project provides comprehensive driver support for the **PiSugar Whisplay Hat**, enabling easy control of the onboard LCD screen, physical buttons, LED indicators, and audio functions.
 
+**Supported Platforms:**
+- Raspberry Pi (all models with 40-pin header)
+- Radxa ZERO 3W (RK3566)
+- Radxa Cubie A7Z (Allwinner A733)
+
 More Details please refer to [Whisplay HAT Docs](https://docs.pisugar.com/docs/product-wiki/whisplay/intro)
 
 ---
@@ -17,6 +22,8 @@ The device utilizes **I2C, SPI, and I2S** buses. The **I2S and I2C buses** are u
 ---
 
 ### Installation
+
+#### Raspberry Pi
 
 After cloning the github project, navigate to the Driver directory and use the script to install.
 
@@ -33,25 +40,92 @@ cd Whisplay/example
 sudo bash run_test.sh
 ```
 
+#### Radxa ZERO 3W
+
+After cloning the github project, navigate to the Driver directory and use the Radxa-specific script to install.
+
+```bash
+git clone https://github.com/PiSugar/Whisplay.git --depth 1
+cd Whisplay/Driver
+sudo bash install_radxa_zero3w.sh
+sudo reboot
+```
+
+The installation script will:
+1. Install Python dependencies (`python3-libgpiod`, `python3-spidev`, `python3-pil`, `python3-pygame`)
+2. Enable SPI3_M1 overlay (for LCD display)
+3. Enable I2S3 overlay (for WM8960 audio)
+4. Configure WM8960 audio driver (if kernel module is available)
+
+After rebooting, test the setup:
+
+```shell
+cd Whisplay/example
+sudo bash run_test.sh
+```
+
+#### Radxa Cubie A7Z
+
+> ⚠️ **Important Hardware Warning (A7Z only)**  
+> Due to circuit incompatibility, the physical button on Whisplay HAT is **not safe to use on Radxa Cubie A7Z**.  
+> **Do not press the button**, otherwise the A7Z may shut down / lose power immediately.
+
+After cloning the github project, navigate to the Driver directory and use the Cubie A7Z-specific script to install.
+
+```bash
+git clone https://github.com/PiSugar/Whisplay.git --depth 1
+cd Whisplay/Driver
+sudo bash install_radxa_cubie_a7z.sh
+sudo reboot
+```
+
+The installation script will:
+1. Install Python dependencies (`python3-libgpiod`, `python3-spidev`, `python3-pil`, `python3-pygame`)
+2. Enable SPI1 overlay (for LCD display)
+3. Enable TWI7 overlay (for WM8960 I2C communication)
+4. Compile and install WM8960 audio overlay and kernel module
+5. Configure ALSA mixer
+
+After rebooting, test the setup:
+
+```shell
+cd Whisplay/example
+sudo bash run_test.sh
+```
+
 ### Driver Structure
 
 All driver files are located in the `Driver` directory and primarily include:
 
 #### 1. `Whisplay.py`
 
-  * **Function**: This script encapsulates the LCD display, physical buttons, and LED indicators into easy-to-use Python objects, simplifying hardware operations.
+  * **Function**: This script encapsulates the LCD display, physical buttons, and LED indicators into easy-to-use Python objects, simplifying hardware operations. It **automatically detects the platform** (Raspberry Pi, Radxa ZERO 3W, or Radxa Cubie A7Z) and uses the appropriate GPIO library.
   * **Quick Verification**: Refer to `example/test.py` to quickly test the LCD, LED, and button functions.
 
 #### 2. WM8960 Audio Driver
 
-  * **Source**: Audio driver support is provided by Waveshare.
+  * **Source**: Audio driver support is provided by Waveshare (Raspberry Pi) or custom overlay (Radxa).
 
-  * **Installation**: Install by running the `install_wm8960_drive.sh` script:
+  * **Installation**:
+    - **Raspberry Pi**: Run `install_wm8960_drive.sh`
+    - **Radxa ZERO 3W**: Run `install_radxa_zero3w.sh`
+    - **Radxa Cubie A7Z**: Run `install_radxa_cubie_a7z.sh`
 
     ```shell
     cd Driver
+    # For Raspberry Pi:
     sudo bash install_wm8960_drive.sh
+    # For Radxa ZERO 3W:
+    sudo bash install_radxa_zero3w.sh
+    # For Radxa Cubie A7Z:
+    sudo bash install_radxa_cubie_a7z.sh
     ```
+
+#### 3. Device Tree Overlays (Radxa only)
+
+  * `wm8960-radxa-zero3.dts` - DT overlay for WM8960 codec on Radxa ZERO 3W (RK3566), configuring I2C3 and I2S3.
+  * `wm8960-cubie-a7z.dts` - DT overlay for WM8960 codec on Radxa Cubie A7Z (Allwinner A733), configuring TWI7 and I2S0.
+  * **Note**: These are automatically compiled and installed by the respective install scripts.
 
 
 ## Example Programs
@@ -113,10 +187,25 @@ The `example` directory contains Python examples to help you get started quickly
     **Effect**: The specified MP4 video will be played on the LCD screen.
 
 
-**Note: This software currently only supports the official full version of the operating system.**
+**Note: This software currently supports:**
+- **Raspberry Pi**: Official full version of the operating system
+- **Radxa ZERO 3W**: Debian 12 (bookworm) official image
+- **Radxa Cubie A7Z**: Debian 11 (bullseye) official image
 
-## Links
+**A7Z Safety Notice:** On Radxa Cubie A7Z, please **do not click the physical button** on Whisplay HAT. Circuit incompatibility may cause immediate power-off.
 
-- [PiSugar Whisplay Docs](https://docs.pisugar.com/docs/product-wiki/whisplay/intro)
-- [whisplay-ai-chatbot](https://github.com/PiSugar/whisplay-ai-chatbot)
-- [whisplay-lumon-mdr-ui](https://github.com/PiSugar/whisplay-lumon-mdr-ui)
+## Documentation and Related Projects
+
+### Official Documentation
+
+[PiSugar Whisplay Docs](https://docs.pisugar.com/docs/product-wiki/whisplay/intro)
+
+### Related Projects
+
+| Project | Author | Description |
+|---------|--------|-------------|
+| [whisplay-ai-chatbot](https://github.com/PiSugar/whisplay-ai-chatbot) | PiSugar | AI chatbot using Whisplay HAT as display and voice control interface |
+| [whisplay-lumon-mdr-ui](https://github.com/PiSugar/whisplay-lumon-mdr-ui) | PiSugar | Tiny Lumon MDR device implementation |
+| [pizero-openclaw](https://github.com/sebastianvkl/pizero-openclaw) | Sebastianvkl | Openclaw project with Whisplay HAT display and voice control |
+| [pisugar-wx](https://github.com/hemna/pisugar-wx) | Hemna | Weather information display on Whisplay HAT |
+
