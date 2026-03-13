@@ -139,8 +139,13 @@ def on_button_pressed():
         print("Image data not loaded yet. This should not happen after initial load.")
 
 
+def on_button_released():
+    print("Button released!")
+
+
 # Register button event
 board.on_button_press(on_button_pressed)
+board.on_button_release(on_button_released)
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(
