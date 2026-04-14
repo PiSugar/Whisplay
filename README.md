@@ -216,6 +216,7 @@ The `example` directory keeps four end-user demos:
 | Project | Author | Description |
 |---------|--------|-------------|
 | [whisplay-ai-chatbot](https://github.com/PiSugar/whisplay-ai-chatbot) | PiSugar | AI chatbot using Whisplay HAT as display and voice control interface |
+| [whisplay-xiaozhi](https://github.com/PiSugar/whisplay-xiaozhi) | PiSugar | XiaoZhi chatbot client implementation for Raspberry Pi with Whisplay HAT |
 | [whisplay-lumon-mdr-ui](https://github.com/PiSugar/whisplay-lumon-mdr-ui) | PiSugar | Tiny Lumon MDR device implementation |
 | [pizero-openclaw](https://github.com/sebastianvkl/pizero-openclaw) | Sebastianvkl | Openclaw project with Whisplay HAT display and voice control |
 | [pisugar-wx](https://github.com/hemna/pisugar-wx) | Hemna | Weather information display on Whisplay HAT |
