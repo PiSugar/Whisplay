@@ -35,6 +35,8 @@ REQUIRED_PKGS=(
   libasound2-plugins
   unzip
   raspi-config
+  python3-libgpiod
+  python3-spidev
 )
 
 # ----------------------------
@@ -333,7 +335,7 @@ echo "  sudo reboot"
 echo "--------------------------------------------------------------"
 echo
 echo "In order to run the python demos, you may need"
-echo "    sudo apt install python3-pil python3-numpy python3-pygame" 
+echo "    sudo apt install python3-pil python3-numpy python3-pygame"
 echo "--------------------------------------------------------------"
 
 power_warning
