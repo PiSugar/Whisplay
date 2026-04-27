@@ -47,6 +47,14 @@ def get_ffmpeg_cmd(video_path, width, height):
         '-'
     ]
 
+def start_audio_process(video_path):
+    # Plays audio via ALSA's default device. Use ffplay or mpv if you have them.
+    return subprocess.Popen(
+        ['ffplay', '-nodisp', '-autoexit', '-loglevel', 'quiet', video_path],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
 def play_video(video_path, video_url=None):
     board = create_whisplay_hardware(
         app_id=os.getenv("WHISPLAY_APP_ID", "whisplay-play-mp4"),
@@ -84,6 +92,7 @@ def play_video(video_path, video_url=None):
 
     process = start_process()
     proc_ref[0] = process
+    audio = start_audio_process(video_path)
 
     gc.collect()
     gc.disable()
