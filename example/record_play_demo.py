@@ -174,6 +174,9 @@ class RecordPlayDemo:
         self.board.on_button_press(self._on_button_press)
         self.board.on_button_release(self._on_button_release)
 
+        self._running = True
+        self.board.on_focus_revoked(self._on_focus_revoked)
+
         # Configure ALSA mixer
         self._setup_mixer()
 
@@ -229,6 +232,12 @@ class RecordPlayDemo:
         with self._lock:
             if self.state == State.RECORDING:
                 self._stop_recording()
+
+    def _on_focus_revoked(self, _payload=None):
+        self._running = False
+        self._stop_recording_proc()
+        self._stop_playback()
+        self._stop_led_blink()
 
     # ==================== Recording ====================
     def _start_recording(self):
@@ -428,7 +437,7 @@ class RecordPlayDemo:
         self._start_led_breath(0, 0, 255)
 
         try:
-            while True:
+            while self._running:
                 time.sleep(0.1)
         except KeyboardInterrupt:
             print("\nExiting...")

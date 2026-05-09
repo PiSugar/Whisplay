@@ -24,7 +24,7 @@ BYTES_PER_PIXEL = 2
 FRAMEBUFFER_STRIDE = SCREEN_WIDTH * BYTES_PER_PIXEL
 FRAMEBUFFER_SIZE = FRAMEBUFFER_STRIDE * SCREEN_HEIGHT
 BUTTON_LONG_PRESS_SEC = 0.7
-QUAD_CLICK_WINDOW_SEC = 4.0
+QUAD_CLICK_WINDOW_SEC = 3.0
 EXIT_REQUEST_TIMEOUT_SEC = 1.5
 RENDER_FPS = 20
 PENDING_LAUNCH_TIMEOUT_SEC = 8.0
@@ -134,6 +134,13 @@ class DesktopRenderer:
         self.title_font = self._load_font(20)
         self.body_font = self._load_font(16)
         self.small_font = self._load_font(14)
+        self.zoom_sizes = {
+            -2: self._load_font(12),
+            -1: self._load_font(14),
+            0: self._load_font(18),
+            1: self._load_font(14),
+            2: self._load_font(12),
+        }
 
     def _load_font(self, size: int):
         candidates = [
@@ -162,25 +169,40 @@ class DesktopRenderer:
         draw.text((left, top_margin + 28), "click: next  hold: open", fill=(160, 190, 210), font=self.small_font)
 
         if not apps:
-            draw.text((left, top_margin + 78), "No apps registered", fill=(255, 200, 120), font=self.body_font)
+            draw.text((left, top_margin + 48), "No apps registered", fill=(255, 200, 120), font=self.body_font)
             frame = image_to_rgb565_bytes(image)
             self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, list(frame))
             return
 
         selected = apps[selected_index % len(apps)]
         status = "running" if selected.is_running() else "stopped"
-        draw.text((left, top_margin + 78), "Selected App", fill=(80, 160, 255), font=self.small_font)
-        selected_color = (120, 255, 140) if pending_app_id == selected.app_id else (255, 255, 255)
-        draw.text((left, top_margin + 102), f"{selected.icon or '[ ]'} {selected.display_name}", fill=selected_color, font=self.body_font)
-        draw.text((left, top_margin + 126), f"State: {status}", fill=(170, 220, 170), font=self.small_font)
+        # draw.text((left, top_margin + 48), "Selected App", fill=(80, 160, 255), font=self.small_font)
+        selected_color = (120, 255, 140) if pending_app_id == selected.app_id else (80, 160, 255)
+        draw.text((left, top_margin + 48), f"{selected.display_name}", fill=selected_color, font=self.body_font)
+        draw.text((left, top_margin + 72), f"State: {status}", fill=(170, 220, 170), font=self.small_font)
 
-        y = top_margin + 166
-        for idx, app in enumerate(apps[:5]):
-            prefix = ">" if idx == selected_index else " "
-            app_state = "on" if app.is_running() else "off"
-            item_color = (120, 255, 140) if pending_app_id == app.app_id else (210, 210, 210)
-            draw.text((left, y), f"{prefix} {app.display_name} [{app_state}]", fill=item_color, font=self.small_font)
-            y += 20
+        y = top_margin + 116
+        total = len(apps)
+        display_items = []
+        for offset in range(-2, 3):
+            idx = (selected_index + offset) % total
+            display_items.append((apps[idx], idx, offset))
+        arrow_x = left
+        text_x = left + 18
+        for app, idx, offset in display_items:
+            font = self.zoom_sizes.get(offset, self.small_font)
+            if pending_app_id == app.app_id:
+                item_color = (120, 255, 140)
+            elif offset == 0:
+                item_color = (255, 255, 255)
+            elif abs(offset) == 1:
+                item_color = (160, 170, 190)
+            else:
+                item_color = (100, 110, 130)
+            if idx == selected_index:
+                draw.text((arrow_x, y), ">", fill=item_color, font=font)
+            draw.text((text_x, y), app.display_name, fill=item_color, font=font)
+            y += 22
 
         modal_app_id = pending_app_id or running_app_id
         if modal_app_id:
@@ -553,6 +575,11 @@ class WhisplayDaemon:
                 if (
                     self.pending_launch_app_id
                     and not self.foreground_app_id
+                ):
+                    self._render_desktop()
+                if (
+                    self.pending_launch_app_id
+                    and not self.foreground_app_id
                     and self.pending_launch_started_at > 0
                     and (time.time() - self.pending_launch_started_at) >= PENDING_LAUNCH_TIMEOUT_SEC
                 ):
@@ -563,11 +590,22 @@ class WhisplayDaemon:
                     self.pending_launch_app_id = None
                     self.pending_launch_started_at = 0.0
                     self._render_desktop()
+                if (
+                    self._button_press_started_at > 0
+                    and not self.foreground_app_id
+                    and time.time() - self._button_press_started_at >= BUTTON_LONG_PRESS_SEC
+                ):
+                    if self.board.button_pressed():
+                        flash_on = int(time.time() * 5) % 2 == 0
+                        self.board.set_rgb(0, 255, 0) if flash_on else self.board.set_rgb(0, 0, 0)
+                    else:
+                        self._button_press_started_at = 0.0
+                        self.board.set_rgb(0, 0, 0)
                 if self.exit_request is not None and time.time() >= self.exit_request["deadline"]:
                     app = self.apps.get(self.exit_request["app_id"])
                     if app and self.foreground_app_id == app.app_id:
                         self._release_focus(app, "exit_timeout")
-            time.sleep(0.2)
+            time.sleep(0.1)
 
     def _register_app(self, payload: dict) -> dict:
         app_id = str(payload.get("app_id", "")).strip()

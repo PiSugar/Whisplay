@@ -227,6 +227,7 @@ class WhisPlayBoard:
     # LCD parameters
     LCD_WIDTH = 240
     LCD_HEIGHT = 280
+    BUTTON_POLL_INTERVAL_SEC = 0.005
     CornerHeight = 20  # Rounded corner height in pixels
 
     # Physical pin definitions (BOARD mode - shared by both platforms)
@@ -348,10 +349,11 @@ class WhisPlayBoard:
     def _button_monitor(self):
         """Button state polling thread.
         HIGH (1) = pressed, LOW (0) = released.
-        10ms poll interval provides natural debounce.
+        Poll interval is configurable; shorter values improve responsiveness.
         """
         btn_line = self._gpio_lines[self.BUTTON_PIN]
         last_state = btn_line.get_value()
+        poll_interval = self.BUTTON_POLL_INTERVAL_SEC
         while self._btn_thread_running:
             try:
                 state = btn_line.get_value()
@@ -366,7 +368,7 @@ class WhisPlayBoard:
             except Exception:
                 if self._btn_thread_running:
                     pass
-            time.sleep(0.01)
+            time.sleep(poll_interval)
 
     # ==================== GPIO Helpers ====================
     def _gpio_output(self, pin, value):

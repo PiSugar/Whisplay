@@ -151,6 +151,14 @@ def on_button_released():
 board.on_button_press(on_button_pressed)
 board.on_button_release(on_button_released)
 
+running = True
+
+def on_focus_revoked(_payload=None):
+    global running
+    running = False
+
+board.on_focus_revoked(on_focus_revoked)
+
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(
     description="Display an image and play sound on button press.")
@@ -187,7 +195,7 @@ except Exception as e:
 
 try:
     print("Waiting for button press (Press Ctrl+C to exit)...")
-    while True:
+    while running:
         # Check if the sound has finished playing and update the 'playing' flag
         if playing and not pygame.mixer.get_busy():
             playing = False

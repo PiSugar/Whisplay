@@ -119,6 +119,16 @@ def on_button_pressed():
 # Register callback
 board.on_button_press(on_button_pressed)
 
+running = True
+
+def on_focus_revoked(_payload=None):
+    global running, recording_process
+    running = False
+    if recording_process and recording_process.poll() is None:
+        recording_process.terminate()
+
+board.on_focus_revoked(on_focus_revoked)
+
 # --- Main program ---
 parser = argparse.ArgumentParser()
 parser.add_argument("--img1", default="data/recording.jpg", help="Image for recording stage")
@@ -149,7 +159,7 @@ try:
     # 4. After audio finishes, enter recording loop
     start_recording()
 
-    while True:
+    while running:
         sleep(0.1)
 
 except KeyboardInterrupt:
