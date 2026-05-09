@@ -102,6 +102,19 @@ All driver files are located in the `Driver` directory and primarily include:
   * **Function**: This script encapsulates the LCD display, physical buttons, and LED indicators into easy-to-use Python objects, simplifying hardware operations. It **automatically detects the platform** (Raspberry Pi, Radxa ZERO 3W, or Radxa Cubie A7Z) and uses the appropriate GPIO library.
   * **Quick Verification**: Refer to `example/test.py` to quickly test the LCD, LED, and button functions.
 
+#### 1.1 `whisplay_daemon.py`
+
+  * **Function**: Optional local hardware daemon that owns the LCD, backlight, RGB LED, button, and app lifecycle, and exposes a local Unix socket API for app registration, app switching, and shared framebuffer handoff.
+  * **Protocol**: line-delimited JSON with `version: 1`
+  * **Default socket path**: `/tmp/whisplay-daemon.sock`
+  * **Commands**: `health.ping`, `app.register`, `app.list`, `app.launch`, `app.focus.acquire`, `app.focus.release`, `app.exit.request`, `framebuffer.acquire`, `backlight.set`, `led.set`, `led.fade`, `button.get_state`, `events.subscribe`
+  * **Desktop behavior**: single click cycles registered apps, long press launches/foregrounds the selected app, and 4 rapid clicks request exit from the foreground app
+  * **Install as service**:
+    ```shell
+    cd Driver
+    sudo bash install_whisplay_daemon_service.sh
+    ```
+
 #### 2. WM8960 Audio Driver
 
   * **Source**: Audio driver support is provided by Waveshare (Raspberry Pi) or custom overlay (Radxa).
@@ -186,6 +199,20 @@ The `example` directory contains Python examples to help you get started quickly
     ```
     **Effect**: The specified MP4 video will be played on the LCD screen.
 
+#### `whisplay_daemon_client.py`
+
+  * **Function**: Simple daemon test client for health checks, app registration/listing/launching, LED/backlight control, foreground acquisition, and button event subscription.
+  * **Usage**:
+    ```shell
+    cd example
+    python3 whisplay_daemon_client.py ping
+    python3 whisplay_daemon_client.py apps
+    python3 whisplay_daemon_client.py register demo DemoApp --launch-command "python3 /path/to/app.py"
+    python3 whisplay_daemon_client.py led 255 0 0 --fade
+    python3 whisplay_daemon_client.py foreground demo --color f800
+    python3 whisplay_daemon_client.py subscribe
+    ```
+
 
 **Note: This software currently supports:**
 - **Raspberry Pi**: Official full version of the operating system
@@ -200,6 +227,11 @@ The `example` directory contains Python examples to help you get started quickly
 
 [PiSugar Whisplay Docs](https://docs.pisugar.com/docs/product-wiki/whisplay/intro)
 
+### Integration Guides
+
+- [Third-Party App Integration Guide](APP_INTEGRATION.md)
+- [第三方 App 接入指南](APP_INTEGRATION_CN.md)
+
 ### Related Projects
 
 | Project | Author | Description |
@@ -208,4 +240,3 @@ The `example` directory contains Python examples to help you get started quickly
 | [whisplay-lumon-mdr-ui](https://github.com/PiSugar/whisplay-lumon-mdr-ui) | PiSugar | Tiny Lumon MDR device implementation |
 | [pizero-openclaw](https://github.com/sebastianvkl/pizero-openclaw) | Sebastianvkl | Openclaw project with Whisplay HAT display and voice control |
 | [pisugar-wx](https://github.com/hemna/pisugar-wx) | Hemna | Weather information display on Whisplay HAT |
-

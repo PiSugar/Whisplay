@@ -26,7 +26,7 @@ import subprocess
 import signal
 
 sys.path.append(os.path.abspath("../Driver"))
-from WhisPlay import WhisPlayBoard
+from daemon_app_bridge import create_whisplay_hardware
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -128,7 +128,11 @@ def load_image_rgb565(filepath, screen_width=240, screen_height=280):
 # ==================== Main Program ====================
 class RecordPlayDemo:
     def __init__(self, card_index=None):
-        self.board = WhisPlayBoard()
+        self.board = create_whisplay_hardware(
+            app_id=os.getenv("WHISPLAY_APP_ID", "whisplay-record-play"),
+            display_name="Record Demo",
+            icon="R",
+        )
         self.board.set_backlight(60)
 
         self.card_index = card_index or self._find_wm8960_card()

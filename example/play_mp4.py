@@ -10,11 +10,7 @@ project_root = os.path.dirname(current_dir)
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-try:
-    from Driver.WhisPlay import WhisPlayBoard
-except ImportError:
-    print("Error: Library 'Driver/WhisPlay.py' not found.")
-    sys.exit(1)
+from daemon_app_bridge import create_whisplay_hardware
 
 def get_ffmpeg_cmd(video_path, width, height):
     model = "generic"
@@ -49,7 +45,11 @@ def get_ffmpeg_cmd(video_path, width, height):
     ]
 
 def play_video(video_path):
-    board = WhisPlayBoard()
+    board = create_whisplay_hardware(
+        app_id=os.getenv("WHISPLAY_APP_ID", "whisplay-play-mp4"),
+        display_name="Play MP4",
+        icon="V",
+    )
     board.set_backlight(100)
 
     width, height = board.LCD_WIDTH, board.LCD_HEIGHT

@@ -11,4 +11,4 @@ if [ -z "$card_index" ]; then
 fi
 echo "Using sound card index: $card_index"
 
-AUDIODEV=hw:$card_index,0 python test.py $@
+AUDIODEV=hw:$card_index,0 python3 test.py "$@"

@@ -5,16 +5,15 @@ import os
 import argparse
 import subprocess
 
-# Import driver
-sys.path.append(os.path.abspath("../Driver"))
-try:
-    from WhisPlay import WhisPlayBoard
-except ImportError:
-    print("Error: WhisPlay driver not found.")
-    sys.exit(1)
+# Import daemon-aware bridge
+from daemon_app_bridge import create_whisplay_hardware
 
 # Initialize hardware
-board = WhisPlayBoard()
+board = create_whisplay_hardware(
+    app_id=os.getenv("WHISPLAY_APP_ID", "whisplay-test2"),
+    display_name="Test2",
+    icon="2",
+)
 board.set_backlight(50)
 
 # Global variables

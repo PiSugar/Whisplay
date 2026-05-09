@@ -8,8 +8,12 @@ import pygame  # Import pygame
 import subprocess
 
 sys.path.append(os.path.abspath("../Driver"))
-from WhisPlay import WhisPlayBoard
-board = WhisPlayBoard()
+from daemon_app_bridge import create_whisplay_hardware
+board = create_whisplay_hardware(
+    app_id=os.getenv("WHISPLAY_APP_ID", "whisplay-run-test"),
+    display_name="Run Test",
+    icon="T",
+)
 board.set_backlight(50)
 
 global_image_data = None
