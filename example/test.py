@@ -8,7 +8,7 @@ import pygame  # Import pygame
 import subprocess
 
 sys.path.append(os.path.abspath("../Driver"))
-from daemon_app_bridge import create_whisplay_hardware
+from whisplay_client import create_whisplay_hardware
 board = create_whisplay_hardware(
     app_id=os.getenv("WHISPLAY_APP_ID", "whisplay-run-test"),
     display_name="Run Test",

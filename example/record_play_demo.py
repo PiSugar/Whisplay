@@ -26,7 +26,7 @@ import subprocess
 import signal
 
 sys.path.append(os.path.abspath("../Driver"))
-from daemon_app_bridge import create_whisplay_hardware
+from whisplay_client import create_whisplay_hardware
 
 from PIL import Image, ImageDraw, ImageFont
 

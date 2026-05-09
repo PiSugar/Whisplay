@@ -10,7 +10,7 @@ project_root = os.path.dirname(current_dir)
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from daemon_app_bridge import create_whisplay_hardware
+from whisplay_client import create_whisplay_hardware
 
 def get_ffmpeg_cmd(video_path, width, height):
     model = "generic"

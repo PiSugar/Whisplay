@@ -6,7 +6,7 @@ import argparse
 import subprocess
 
 # Import daemon-aware bridge
-from daemon_app_bridge import create_whisplay_hardware
+from whisplay_client import create_whisplay_hardware
 
 # Initialize hardware
 board = create_whisplay_hardware(
