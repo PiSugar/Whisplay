@@ -19,7 +19,7 @@ if [ -z "${is_CubieA7Z}" ]; then
   echo "Error: This script is only for Radxa Cubie A7Z"
   echo "Detected compatible: ${COMPAT}"
   echo "For Radxa ZERO 3W, use install_radxa_zero3w.sh"
-  echo "For Raspberry Pi, use install_wm8960_drive.sh"
+  echo "For Raspberry Pi, use script/install_raspberry_pi.sh"
   exit 1
 fi
 
@@ -33,6 +33,7 @@ echo "Detected platform: ${MODEL} (${COMPAT})"
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DTBO_DIR="/boot/dtbo"
 
 # ==================== 1. Install System Dependencies ====================
@@ -108,7 +109,7 @@ fi
 
 # Compile WM8960 device tree overlay
 echo "  Compiling WM8960 device tree overlay..."
-WM8960_DTS="${SCRIPT_DIR}/wm8960-cubie-a7z.dts"
+WM8960_DTS="${PROJECT_ROOT}/audio/wm8960-cubie-a7z.dts"
 
 if [ -f "${WM8960_DTS}" ]; then
     WM8960_DTBO="${DTBO_DIR}/wm8960-cubie-a7z.dtbo"

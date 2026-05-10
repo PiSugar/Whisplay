@@ -8,9 +8,9 @@ import urllib.request
 from PIL import Image, ImageDraw, ImageFont
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
-if project_root not in sys.path:
-    sys.path.append(project_root)
+runtime_dir = os.path.abspath(os.path.join(current_dir, "..", "runtime"))
+if runtime_dir not in sys.path:
+    sys.path.append(runtime_dir)
 
 from whisplay_client import create_whisplay_hardware
 
@@ -51,6 +51,7 @@ def play_video(video_path, video_url=None):
         app_id=os.getenv("WHISPLAY_APP_ID", "whisplay-play-mp4"),
         display_name="Play MP4",
         icon="V",
+        use_daemon_default_log=True,
     )
     board.set_backlight(100)
     width, height = board.LCD_WIDTH, board.LCD_HEIGHT

@@ -2,6 +2,7 @@ import argparse
 import json
 import mmap
 import os
+import re
 import shlex
 import signal
 import socket
@@ -14,7 +15,12 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw, ImageFont
 
-from WhisPlay import WhisPlayBoard
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+RUNTIME_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "runtime"))
+if RUNTIME_DIR not in sys.path:
+    sys.path.append(RUNTIME_DIR)
+
+from whisplay import WhisPlayBoard
 
 
 SCREEN_WIDTH = 240
@@ -28,22 +34,85 @@ QUAD_CLICK_WINDOW_SEC = 3.0
 EXIT_REQUEST_TIMEOUT_SEC = 1.5
 RENDER_FPS = 20
 PENDING_LAUNCH_TIMEOUT_SEC = 8.0
+EXIT_GESTURE_QUAD_CLICK = "quad_click"
+EXIT_GESTURE_LONG_PRESS = "long_press"
+VALID_EXIT_GESTURES = {EXIT_GESTURE_QUAD_CLICK, EXIT_GESTURE_LONG_PRESS}
+DEFAULT_DAEMON_HOME = os.path.expanduser("~/.whisplay-daemon")
+DEFAULT_SETTINGS_PATH = os.path.join(DEFAULT_DAEMON_HOME, "settings.json")
+DEFAULT_APPS_DIR = os.path.join(DEFAULT_DAEMON_HOME, "app")
+DEFAULT_SOCKET_PATH = "/tmp/whisplay-daemon.sock"
+DEFAULT_APP_LOG_PATH = os.path.join(DEFAULT_DAEMON_HOME, "daemon-app.log")
+PISUGAR_SOCKET_CANDIDATES = (
+    "/tmp/pisugar-server.sock",
+    "/run/pisugar-server.sock",
+)
+PISUGAR_RECONNECT_SEC = 2.0
+
+
+def _load_json_file(path: str) -> dict:
+    try:
+        with open(path, "r", encoding="utf-8") as fp:
+            data = json.load(fp)
+        return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except Exception as exc:
+        print(f"[WhisplayDaemon] Failed to load JSON from {path}: {exc}")
+        return {}
+
+
+def _write_json_file(path: str, payload: dict):
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fp:
+        json.dump(payload, fp, ensure_ascii=True, indent=2)
+        fp.write("\n")
+
+
+def resolve_runtime_config(args):
+    settings_path = os.path.abspath(
+        os.path.expanduser(
+            args.settings_path
+            or os.getenv("WHISPLAY_DAEMON_SETTINGS_PATH")
+            or DEFAULT_SETTINGS_PATH
+        )
+    )
+    settings = _load_json_file(settings_path)
+    apps_dir = os.path.abspath(
+        os.path.expanduser(
+            args.apps_dir
+            or os.getenv("WHISPLAY_DAEMON_APPS_DIR")
+            or settings.get("apps_dir")
+            or DEFAULT_APPS_DIR
+        )
+    )
+    stored_settings = dict(settings)
+    changed = False
+    if "socket_path" in stored_settings:
+        del stored_settings["socket_path"]
+        changed = True
+    if stored_settings.get("apps_dir") != apps_dir:
+        stored_settings["apps_dir"] = apps_dir
+        changed = True
+    if not os.path.exists(settings_path) or changed:
+        _write_json_file(settings_path, stored_settings)
+    return {
+        "settings_path": settings_path,
+        "socket_path": DEFAULT_SOCKET_PATH,
+        "apps_dir": apps_dir,
+    }
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Whisplay hardware daemon")
     parser.add_argument(
-        "--socket-path",
-        default=os.getenv("WHISPLAY_DAEMON_SOCKET_PATH", "/tmp/whisplay-daemon.sock"),
-        help="Unix socket path for the local IPC server",
+        "--settings-path",
+        default=None,
+        help="Path to daemon settings.json",
     )
     parser.add_argument(
-        "--apps-config",
-        default=os.getenv(
-            "WHISPLAY_DAEMON_APPS_PATH",
-            os.path.join(os.path.dirname(__file__), "whisplay_apps.json"),
-        ),
-        help="Path to the persisted app registry config",
+        "--apps-dir",
+        default=None,
+        help="Directory containing one JSON file per persisted app entry",
     )
     return parser.parse_args()
 
@@ -68,8 +137,12 @@ class AppRecord:
     launch_command: str = ""
     cwd: str = ""
     env: dict = field(default_factory=dict)
+    exit_gesture: str = EXIT_GESTURE_QUAD_CLICK
+    priority: int = 0
+    use_daemon_default_log: bool = False
     persist: bool = False
     process: subprocess.Popen | None = None
+    process_log_handle = None
     subscribers: set = field(default_factory=set)
     session_token: str | None = None
     framebuffer_path: str | None = None
@@ -228,10 +301,11 @@ class DesktopRenderer:
 
 
 class WhisplayDaemon:
-    def __init__(self, socket_path: str, apps_config_path: str):
+    def __init__(self, socket_path: str, apps_dir: str, settings_path: str):
         self.socket_path = socket_path
         self.socket_dir = os.path.dirname(socket_path) or "."
-        self.apps_config_path = apps_config_path
+        self.apps_dir = os.path.abspath(os.path.expanduser(apps_dir))
+        self.settings_path = os.path.abspath(os.path.expanduser(settings_path))
         self.server_socket = None
         self.running = True
         self.state_lock = threading.RLock()
@@ -247,77 +321,202 @@ class WhisplayDaemon:
         self.last_frame = None
         self._button_press_started_at = 0.0
         self._recent_release_times: list[float] = []
+        self._foreground_long_press_fired = False
+        self._pisugar_sock_path: str | None = None
+        self._pisugar_long_press_exit_enabled = False
+        self._pisugar_listener_running = False
+        self._pisugar_listener_thread: threading.Thread | None = None
         self._render_thread = threading.Thread(target=self._render_loop, daemon=True)
         self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self._load_apps()
-        self._ensure_builtin_apps()
         self.board.on_button_press(self._on_button_pressed)
         self.board.on_button_release(self._on_button_released)
 
-    def _ensure_builtin_apps(self):
-        example_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "example"))
-        run_test_sh = os.path.join(example_dir, "run_test.sh")
-        if not os.path.exists(run_test_sh):
+    def _pisugar_socket_path(self) -> str | None:
+        for path in PISUGAR_SOCKET_CANDIDATES:
+            if os.path.exists(path):
+                return path
+        return None
+
+    def _pisugar_request(self, sock_path: str, command: str, timeout_sec: float = 1.5) -> str | None:
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                client.settimeout(timeout_sec)
+                client.connect(sock_path)
+                client.sendall((command.strip() + "\n").encode("utf-8"))
+                chunks: list[bytes] = []
+                while True:
+                    try:
+                        data = client.recv(4096)
+                    except socket.timeout:
+                        break
+                    if not data:
+                        break
+                    chunks.append(data)
+                    if b"\n" in data:
+                        break
+                if not chunks:
+                    return None
+                text = b"".join(chunks).decode("utf-8", "replace")
+                for line in text.splitlines():
+                    line = line.strip()
+                    if line:
+                        return line
+        except Exception:
+            return None
+        return None
+
+    def _parse_bool_from_tail(self, text: str) -> bool | None:
+        token = text.strip().split()[-1].lower() if text.strip() else ""
+        if token in {"1", "true", "on"}:
+            return True
+        if token in {"0", "false", "off"}:
+            return False
+        return None
+
+    def _pisugar_long_enabled(self, sock_path: str) -> bool | None:
+        line = self._pisugar_request(sock_path, "get button_enable long")
+        if line:
+            value = self._parse_bool_from_tail(line)
+            if value is not None:
+                return value
+        line = self._pisugar_request(sock_path, "get button_enable")
+        if not line:
+            return None
+        lower = line.lower()
+        match = re.search(r"button_enable:\s+long\s+(true|false|1|0|on|off)\b", lower)
+        if match:
+            token = match.group(1)
+            return token in {"true", "1", "on"}
+        return None
+
+    def _pisugar_long_shell_defined(self, sock_path: str) -> bool | None:
+        line = self._pisugar_request(sock_path, "get button_shell long")
+        if line:
+            value = line.split(":", 1)[1].strip() if ":" in line else line.strip()
+            return bool(value) and value.lower() not in {"none", "null", "\"\""}
+        line = self._pisugar_request(sock_path, "get button_shell")
+        if not line:
+            return None
+        match = re.search(r"button_shell:\s+long\s+(.+)$", line, flags=re.IGNORECASE)
+        if not match:
+            return None
+        value = match.group(1).strip()
+        return bool(value) and value.lower() not in {"none", "null", "\"\""}
+
+    def _pisugar_has_custom_long_event(self, sock_path: str) -> bool | None:
+        enabled = self._pisugar_long_enabled(sock_path)
+        shell_defined = self._pisugar_long_shell_defined(sock_path)
+        if enabled is None or shell_defined is None:
+            return None
+        return enabled and shell_defined
+
+    def _request_exit_from_pisugar(self):
+        with self.state_lock:
+            if not self.foreground_app_id:
+                return
+            app = self.apps.get(self.foreground_app_id)
+            if app is None:
+                return
+            self._request_exit(app, "pisugar_long_press_exit")
+
+    def _handle_pisugar_line(self, line: str):
+        line_lower = line.strip().lower()
+        if not line_lower:
             return
-        self.apps.setdefault(
-            "whisplay-run-test",
-            AppRecord(
-                app_id="whisplay-run-test",
-                display_name="Run Test",
-                icon="T",
-                launch_command=f"bash {run_test_sh}",
-                cwd=example_dir,
-                env={"WHISPLAY_APP_ID": "whisplay-run-test"},
-                persist=False,
-            ),
-        )
-        self.apps.setdefault(
-            "whisplay-test2",
-            AppRecord(
-                app_id="whisplay-test2",
-                display_name="Test2",
-                icon="2",
-                launch_command="python3 test2.py",
-                cwd=example_dir,
-                env={"WHISPLAY_APP_ID": "whisplay-test2"},
-                persist=False,
-            ),
-        )
-        self.apps.setdefault(
-            "whisplay-record-play",
-            AppRecord(
-                app_id="whisplay-record-play",
-                display_name="Record Demo",
-                icon="R",
-                launch_command="python3 record_play_demo.py",
-                cwd=example_dir,
-                env={"WHISPLAY_APP_ID": "whisplay-record-play"},
-                persist=False,
-            ),
-        )
-        self.apps.setdefault(
-            "whisplay-play-mp4",
-            AppRecord(
-                app_id="whisplay-play-mp4",
-                display_name="Play MP4",
-                icon="V",
-                launch_command="python3 play_mp4.py",
-                cwd=example_dir,
-                env={"WHISPLAY_APP_ID": "whisplay-play-mp4"},
-                persist=False,
-            ),
-        )
+        if line_lower in {"long", "button long", "button_long", "button_long_press"}:
+            self._request_exit_from_pisugar()
+            return
+        if "button" in line_lower and "long" in line_lower:
+            self._request_exit_from_pisugar()
+
+    def _pisugar_listener_loop(self):
+        while self.running and self._pisugar_listener_running:
+            sock_path = self._pisugar_sock_path or self._pisugar_socket_path()
+            if not sock_path:
+                time.sleep(PISUGAR_RECONNECT_SEC)
+                continue
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                    client.settimeout(1.0)
+                    client.connect(sock_path)
+                    while self.running and self._pisugar_listener_running:
+                        try:
+                            data = client.recv(4096)
+                        except socket.timeout:
+                            continue
+                        if not data:
+                            break
+                        text = data.decode("utf-8", "replace")
+                        for line in text.splitlines():
+                            self._handle_pisugar_line(line)
+            except Exception:
+                time.sleep(PISUGAR_RECONNECT_SEC)
+
+    def _init_pisugar_integration(self):
+        sock_path = self._pisugar_socket_path()
+        if not sock_path:
+            print("[WhisplayDaemon] pisugar-server socket not found, skipping integration")
+            return
+        self._pisugar_sock_path = sock_path
+        custom_long = self._pisugar_has_custom_long_event(sock_path)
+        if custom_long is True:
+            print("[WhisplayDaemon] pisugar long button has custom event, daemon will not hijack it")
+            return
+        if custom_long is None:
+            print("[WhisplayDaemon] unable to determine pisugar long button config, skip integration for safety")
+            return
+        self._pisugar_long_press_exit_enabled = True
+        self._pisugar_listener_running = True
+        self._pisugar_listener_thread = threading.Thread(target=self._pisugar_listener_loop, daemon=True)
+        self._pisugar_listener_thread.start()
+        print(f"[WhisplayDaemon] pisugar long-press exit enabled via {sock_path}")
+
+    def _normalize_priority(self, value) -> int:
+        try:
+            return int(value)
+        except Exception:
+            return 0
+
+    def _safe_app_filename(self, app_id: str) -> str:
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", app_id.strip())
+        return safe or "app"
+
+    def _persisted_app_path(self, app_id: str) -> str:
+        return os.path.join(self.apps_dir, f"{self._safe_app_filename(app_id)}.json")
+
+    def _app_record_to_config(self, app: AppRecord) -> dict:
+        return {
+            "app_id": app.app_id,
+            "display_name": app.display_name,
+            "icon": app.icon,
+            "launch_command": app.launch_command,
+            "cwd": app.cwd,
+            "env": app.env,
+            "exit_gesture": app.exit_gesture,
+            "priority": app.priority,
+            "use_daemon_default_log": app.use_daemon_default_log,
+            "persist": app.persist,
+        }
 
     def _load_apps(self):
-        if not os.path.exists(self.apps_config_path):
+        if not os.path.isdir(self.apps_dir):
             return
-        try:
-            with open(self.apps_config_path, "r", encoding="utf-8") as fp:
-                data = json.load(fp)
-        except Exception as exc:
-            print(f"[WhisplayDaemon] Failed to load app config: {exc}")
-            return
-        for item in data.get("apps", []):
+        for entry in sorted(os.listdir(self.apps_dir)):
+            if not entry.endswith(".json"):
+                continue
+            path = os.path.join(self.apps_dir, entry)
+            if not os.path.isfile(path):
+                continue
+            try:
+                with open(path, "r", encoding="utf-8") as fp:
+                    item = json.load(fp)
+            except Exception as exc:
+                print(f"[WhisplayDaemon] Failed to load app config {path}: {exc}")
+                continue
+            if not isinstance(item, dict):
+                print(f"[WhisplayDaemon] Ignoring non-object app config: {path}")
+                continue
             app_id = item.get("app_id")
             if not app_id:
                 continue
@@ -328,31 +527,31 @@ class WhisplayDaemon:
                 launch_command=item.get("launch_command", ""),
                 cwd=item.get("cwd", ""),
                 env=item.get("env", {}) or {},
+                exit_gesture=self._normalize_exit_gesture(item.get("exit_gesture")),
+                priority=self._normalize_priority(item.get("priority", 0)),
+                use_daemon_default_log=bool(item.get("use_daemon_default_log", False)),
                 persist=bool(item.get("persist", False)),
             )
 
-    def _save_apps(self):
-        os.makedirs(os.path.dirname(self.apps_config_path) or ".", exist_ok=True)
-        payload = {
-            "apps": [
-                {
-                    "app_id": app.app_id,
-                    "display_name": app.display_name,
-                    "icon": app.icon,
-                    "launch_command": app.launch_command,
-                    "cwd": app.cwd,
-                    "env": app.env,
-                    "persist": app.persist,
-                }
-                for app in self.apps.values()
-                if app.persist
-            ]
-        }
-        with open(self.apps_config_path, "w", encoding="utf-8") as fp:
-            json.dump(payload, fp, ensure_ascii=True, indent=2)
+    def _save_app(self, app: AppRecord):
+        path = self._persisted_app_path(app.app_id)
+        if not app.persist:
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
+            except Exception as exc:
+                print(f"[WhisplayDaemon] Failed to remove app config {path}: {exc}")
+            return
+        os.makedirs(self.apps_dir, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fp:
+            json.dump(self._app_record_to_config(app), fp, ensure_ascii=True, indent=2)
 
     def _app_list(self) -> list[AppRecord]:
-        return sorted(self.apps.values(), key=lambda app: app.display_name.lower())
+        return sorted(
+            self.apps.values(),
+            key=lambda app: (-app.priority, app.display_name.lower(), app.app_id),
+        )
 
     def _current_selected_app(self) -> AppRecord | None:
         apps = self._app_list()
@@ -408,6 +607,14 @@ class WhisplayDaemon:
                 pass
         app.framebuffer_path = None
 
+    def _close_process_log(self, app: AppRecord):
+        if app.process_log_handle is not None:
+            try:
+                app.process_log_handle.close()
+            except Exception:
+                pass
+            app.process_log_handle = None
+
     def _grant_focus(self, app: AppRecord):
         if self.foreground_app_id and self.foreground_app_id != app.app_id:
             raise RuntimeError("another app is already foreground")
@@ -437,6 +644,7 @@ class WhisplayDaemon:
         self._teardown_framebuffer(app)
         self.foreground_app_id = None
         self.exit_request = None
+        self._foreground_long_press_fired = False
         self.pending_launch_app_id = None
         self.pending_launch_started_at = 0.0
         self._render_desktop()
@@ -444,6 +652,7 @@ class WhisplayDaemon:
 
     def _request_exit(self, app: AppRecord, reason: str):
         print(f"[WhisplayDaemon] Exit requested for {app.app_id}: {reason}")
+        self._foreground_long_press_fired = True
         self.exit_request = {
             "app_id": app.app_id,
             "deadline": time.time() + EXIT_REQUEST_TIMEOUT_SEC,
@@ -468,16 +677,26 @@ class WhisplayDaemon:
             return
         env = os.environ.copy()
         env.update(app.env or {})
+        if app.use_daemon_default_log:
+            env["WHISPLAY_DAEMON_DEFAULT_LOG"] = DEFAULT_APP_LOG_PATH
         cwd = app.cwd or None
+        stdout_target = None
         try:
+            if app.use_daemon_default_log:
+                os.makedirs(DEFAULT_DAEMON_HOME, exist_ok=True)
+                app.process_log_handle = open(DEFAULT_APP_LOG_PATH, "ab")
+                stdout_target = app.process_log_handle
             app.process = subprocess.Popen(
                 app.launch_command,
                 shell=True,
                 cwd=cwd,
                 env=env,
                 start_new_session=True,
+                stdout=stdout_target,
+                stderr=subprocess.STDOUT if stdout_target is not None else None,
             )
         except Exception:
+            self._close_process_log(app)
             self.pending_launch_app_id = None
             self.pending_launch_started_at = 0.0
             self._render_desktop()
@@ -489,6 +708,7 @@ class WhisplayDaemon:
     def _on_button_pressed(self):
         with self.state_lock:
             self._button_press_started_at = time.time()
+            self._foreground_long_press_fired = False
             if not self.foreground_app_id:
                 self.board.set_rgb(0, 0, 255)
             if self.foreground_app_id:
@@ -513,17 +733,20 @@ class WhisplayDaemon:
                     {"app_id": self.foreground_app_id},
                     app_id=self.foreground_app_id,
                 )
-                self._recent_release_times = [
-                    value for value in self._recent_release_times if now - value <= QUAD_CLICK_WINDOW_SEC
-                ]
-                self._recent_release_times.append(now)
-                print(
-                    f"[WhisplayDaemon] foreground click count={len(self._recent_release_times)} "
-                    f"window={QUAD_CLICK_WINDOW_SEC}s app={self.foreground_app_id}"
-                )
-                if app and len(self._recent_release_times) >= 4:
+                if app and app.exit_gesture == EXIT_GESTURE_QUAD_CLICK:
+                    self._recent_release_times = [
+                        value for value in self._recent_release_times if now - value <= QUAD_CLICK_WINDOW_SEC
+                    ]
+                    self._recent_release_times.append(now)
+                    print(
+                        f"[WhisplayDaemon] foreground click count={len(self._recent_release_times)} "
+                        f"window={QUAD_CLICK_WINDOW_SEC}s app={self.foreground_app_id}"
+                    )
+                    if len(self._recent_release_times) >= 4:
+                        self._recent_release_times = []
+                        self._request_exit(app, "quad_click_exit")
+                else:
                     self._recent_release_times = []
-                    self._request_exit(app, "quad_click_exit")
                 return
 
             self._recent_release_times = []
@@ -561,6 +784,7 @@ class WhisplayDaemon:
                     if app.process is not None and app.process.poll() is not None:
                         rc = app.process.returncode
                         app.process = None
+                        self._close_process_log(app)
                         if self.pending_launch_app_id == app.app_id:
                             print(
                                 f"[WhisplayDaemon] App launch ended before foreground: "
@@ -592,20 +816,36 @@ class WhisplayDaemon:
                     self._render_desktop()
                 if (
                     self._button_press_started_at > 0
-                    and not self.foreground_app_id
                     and time.time() - self._button_press_started_at >= BUTTON_LONG_PRESS_SEC
                 ):
                     if self.board.button_pressed():
-                        flash_on = int(time.time() * 5) % 2 == 0
-                        self.board.set_rgb(0, 255, 0) if flash_on else self.board.set_rgb(0, 0, 0)
+                        if self.foreground_app_id:
+                            app = self.apps.get(self.foreground_app_id)
+                            if (
+                                app
+                                and app.exit_gesture == EXIT_GESTURE_LONG_PRESS
+                                and not self._foreground_long_press_fired
+                            ):
+                                self._request_exit(app, "long_press_exit")
+                        else:
+                            flash_on = int(time.time() * 5) % 2 == 0
+                            self.board.set_rgb(0, 255, 0) if flash_on else self.board.set_rgb(0, 0, 0)
                     else:
                         self._button_press_started_at = 0.0
-                        self.board.set_rgb(0, 0, 0)
+                        self._foreground_long_press_fired = False
+                        if not self.foreground_app_id:
+                            self.board.set_rgb(0, 0, 0)
                 if self.exit_request is not None and time.time() >= self.exit_request["deadline"]:
                     app = self.apps.get(self.exit_request["app_id"])
                     if app and self.foreground_app_id == app.app_id:
                         self._release_focus(app, "exit_timeout")
             time.sleep(0.1)
+
+    def _normalize_exit_gesture(self, value) -> str:
+        text = str(value or EXIT_GESTURE_QUAD_CLICK).strip().lower()
+        if text not in VALID_EXIT_GESTURES:
+            return EXIT_GESTURE_QUAD_CLICK
+        return text
 
     def _register_app(self, payload: dict) -> dict:
         app_id = str(payload.get("app_id", "")).strip()
@@ -626,14 +866,23 @@ class WhisplayDaemon:
             record.cwd = str(payload.get("cwd") or "")
         if payload.get("env") is not None and isinstance(payload.get("env"), dict):
             record.env = {str(key): str(value) for key, value in payload.get("env", {}).items()}
+        if payload.get("exit_gesture") is not None:
+            record.exit_gesture = self._normalize_exit_gesture(payload.get("exit_gesture"))
+        if payload.get("priority") is not None:
+            record.priority = self._normalize_priority(payload.get("priority"))
+        if payload.get("use_daemon_default_log") is not None:
+            record.use_daemon_default_log = bool(payload.get("use_daemon_default_log"))
         if payload.get("persist") is not None:
             record.persist = bool(payload.get("persist"))
-            self._save_apps()
+        self._save_app(record)
         self._render_desktop()
         return {
             "app_id": record.app_id,
             "display_name": record.display_name,
             "icon": record.icon,
+            "exit_gesture": record.exit_gesture,
+            "priority": record.priority,
+            "use_daemon_default_log": record.use_daemon_default_log,
             "running": record.is_running(),
         }
 
@@ -644,6 +893,9 @@ class WhisplayDaemon:
                 "app_id": app.app_id,
                 "display_name": app.display_name,
                 "icon": app.icon,
+                "exit_gesture": app.exit_gesture,
+                "priority": app.priority,
+                "use_daemon_default_log": app.use_daemon_default_log,
                 "running": app.is_running(),
                 "selected": selected is not None and selected.app_id == app.app_id,
                 "foreground": self.foreground_app_id == app.app_id,
@@ -822,6 +1074,7 @@ class WhisplayDaemon:
         self.board.set_rgb(0, 0, 0)
         self.board.set_backlight(100)
         self._render_desktop()
+        self._init_pisugar_integration()
         self._render_thread.start()
         self._monitor_thread.start()
         print(f"[WhisplayDaemon] Listening on {self.socket_path}")
@@ -835,6 +1088,7 @@ class WhisplayDaemon:
 
     def stop(self):
         self.running = False
+        self._pisugar_listener_running = False
         try:
             if self.server_socket is not None:
                 self.server_socket.close()
@@ -844,6 +1098,7 @@ class WhisplayDaemon:
         with self.state_lock:
             for app in self.apps.values():
                 self._teardown_framebuffer(app)
+                self._close_process_log(app)
             self.foreground_app_id = None
         self.board.cleanup()
         try:
@@ -866,7 +1121,12 @@ def cleanup_and_exit(_signum=None, _frame=None):
 
 if __name__ == "__main__":
     args = parse_args()
-    daemon_instance = WhisplayDaemon(args.socket_path, args.apps_config)
+    runtime_config = resolve_runtime_config(args)
+    daemon_instance = WhisplayDaemon(
+        runtime_config["socket_path"],
+        runtime_config["apps_dir"],
+        runtime_config["settings_path"],
+    )
     signal.signal(signal.SIGTERM, cleanup_and_exit)
     signal.signal(signal.SIGINT, cleanup_and_exit)
     signal.signal(signal.SIGQUIT, cleanup_and_exit)

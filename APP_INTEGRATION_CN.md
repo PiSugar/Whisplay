@@ -23,6 +23,18 @@
 5. 使用 `mmap` 映射 framebuffer，并直接写像素
 6. 退出时释放前台焦点
 
+对于 Python app，推荐直接复用 `runtime/whisplay_client.py` 这个 helper。
+
+## 仓库入口路径
+
+当前仓库结构下，建议按下面路径接入：
+
+- 硬件 helper：`runtime/whisplay.py`
+- daemon 模式 app helper：`runtime/whisplay_client.py`
+- daemon 运行脚本：`daemon/whisplay_daemon.py`
+- daemon 服务安装脚本：`daemon/install_whisplay_daemon_service.sh`
+- 平台驱动安装入口（自动识别）：`install_driver.sh`
+
 ## 运行模型
 
 daemon 有两种状态：
@@ -32,9 +44,10 @@ daemon 有两种状态：
   - 长按启动或切换到该 app 前台
 - 前台 app 模式：
   - 普通按下/松开事件会转发给前台 app
-  - 快速按 4 下是全局保留手势，用于请求退出当前 app
+  - 默认情况下，快速按 4 下是全局保留手势，用于请求退出当前 app
+  - app 也可以显式声明 `exit_gesture: "long_press"`，改为长按退出
 
-当 daemon 检测到 4 连击后，会向前台 app 发送 `app_exit_requested`。app 应尽快停止工作、释放前台并退出。
+当 daemon 检测到当前 app 配置的退出手势后，会向前台 app 发送 `app_exit_requested`。app 应尽快停止工作、释放前台并退出。
 
 ## IPC 基础
 
@@ -80,6 +93,9 @@ Payload：
   "env": {
     "MY_FLAG": "1"
   },
+  "exit_gesture": "quad_click",
+  "priority": 50,
+  "use_daemon_default_log": true,
   "persist": true
 }
 ```
@@ -88,7 +104,11 @@ Payload：
 
 - `app_id` 必须稳定且唯一
 - `launch_command` 是桌面启动该 app 时 daemon 实际执行的命令
-- `persist: true` 会将该 app 持久化保存到 daemon 配置中
+- `persist: true` 会将该 app 以单独 JSON 文件形式持久化保存到 `~/.whisplay-daemon/app/`
+- `exit_gesture` 是可选项，可取 `quad_click` 或 `long_press`，默认值为 `quad_click`
+- `priority` 是可选项，值越大在桌面中排得越靠前，默认值为 `0`
+- `use_daemon_default_log` 是可选项。为 `true` 时，app 的 stdout/stderr 会追加写入 `~/.whisplay-daemon/daemon-app.log`
+- daemon 运行时不会再注入内置 app。默认示例 app 的 JSON 文件由安装脚本同步到 `~/.whisplay-daemon/app/`
 
 ### `app.list`
 

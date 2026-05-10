@@ -1,18 +1,19 @@
 import json
 import mmap
-import os
 import socket
 import threading
 import time
 
-import sys
-sys.path.append(os.path.abspath("../Driver"))
-from WhisPlay import WhisPlayBoard
+from whisplay import WhisPlayBoard
+
 
 DEFAULT_DAEMON_SOCKET_PATH = "/tmp/whisplay-daemon.sock"
 DEFAULT_APP_ID = "whisplay-ai-chatbot"
 DEFAULT_APP_DISPLAY_NAME = "AI Chatbot"
 DEFAULT_APP_ICON = "AI"
+DEFAULT_EXIT_GESTURE = "quad_click"
+DEFAULT_PRIORITY = 0
+DEFAULT_USE_DAEMON_DEFAULT_LOG = False
 
 
 class WhisplayDaemonProxy:
@@ -29,6 +30,9 @@ class WhisplayDaemonProxy:
         launch_command: str | None = None,
         launch_cwd: str | None = None,
         persist: bool = True,
+        exit_gesture: str = DEFAULT_EXIT_GESTURE,
+        priority: int = DEFAULT_PRIORITY,
+        use_daemon_default_log: bool = DEFAULT_USE_DAEMON_DEFAULT_LOG,
     ):
         self.socket_path = socket_path
         self.button_press_callback = None
@@ -49,6 +53,9 @@ class WhisplayDaemonProxy:
         self._launch_command = launch_command
         self._launch_cwd = launch_cwd
         self._persist = persist
+        self._exit_gesture = str(exit_gesture or DEFAULT_EXIT_GESTURE)
+        self._priority = int(priority)
+        self._use_daemon_default_log = bool(use_daemon_default_log)
 
     def _send_request(self, cmd: str, payload: dict | None = None) -> dict:
         body = {"version": 1, "cmd": cmd, "payload": payload or {}}
@@ -81,6 +88,9 @@ class WhisplayDaemonProxy:
             payload["launch_command"] = self._launch_command
         if self._launch_cwd is not None:
             payload["cwd"] = self._launch_cwd
+        payload["exit_gesture"] = self._exit_gesture
+        payload["priority"] = self._priority
+        payload["use_daemon_default_log"] = self._use_daemon_default_log
         self._send_request("app.register", payload)
 
     def acquire_foreground(self, timeout_sec: float = 5.0):
@@ -247,16 +257,21 @@ def create_whisplay_hardware(
     launch_command: str | None = None,
     launch_cwd: str | None = None,
     persist: bool = True,
+    exit_gesture: str = DEFAULT_EXIT_GESTURE,
+    priority: int = DEFAULT_PRIORITY,
+    use_daemon_default_log: bool = DEFAULT_USE_DAEMON_DEFAULT_LOG,
 ):
-    socket_path = DEFAULT_DAEMON_SOCKET_PATH
     daemon = WhisplayDaemonProxy(
-        socket_path=socket_path,
+        socket_path=DEFAULT_DAEMON_SOCKET_PATH,
         app_id=app_id,
         display_name=display_name,
         icon=icon,
         launch_command=launch_command,
         launch_cwd=launch_cwd,
         persist=persist,
+        exit_gesture=exit_gesture,
+        priority=priority,
+        use_daemon_default_log=use_daemon_default_log,
     )
     if daemon.ping():
         daemon.register()

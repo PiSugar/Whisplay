@@ -1,0 +1,13 @@
+{
+  "app_id": "whisplay-jump",
+  "display_name": "Jump Game",
+  "icon": "J",
+  "launch_command": "python3 jump_game.py",
+  "cwd": "__EXAMPLE_DIR__",
+  "env": {
+    "WHISPLAY_APP_ID": "whisplay-jump"
+  },
+  "exit_gesture": "quad_click",
+  "priority": 25,
+  "use_daemon_default_log": true
+}

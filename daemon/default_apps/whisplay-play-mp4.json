@@ -1,0 +1,13 @@
+{
+  "app_id": "whisplay-play-mp4",
+  "display_name": "Play MP4",
+  "icon": "V",
+  "launch_command": "python3 play_mp4.py",
+  "cwd": "__EXAMPLE_DIR__",
+  "env": {
+    "WHISPLAY_APP_ID": "whisplay-play-mp4"
+  },
+  "exit_gesture": "quad_click",
+  "priority": 10,
+  "use_daemon_default_log": true
+}

@@ -23,6 +23,18 @@ Instead, your app should:
 5. `mmap` the framebuffer and draw directly into it
 6. release focus when exiting
 
+For Python apps, the helper client now lives at `runtime/whisplay_client.py`.
+
+## Repo Entry Points
+
+In the current repository layout:
+
+- hardware helper: `runtime/whisplay.py`
+- daemon app helper: `runtime/whisplay_client.py`
+- daemon runtime: `daemon/whisplay_daemon.py`
+- daemon service installer: `daemon/install_whisplay_daemon_service.sh`
+- platform driver installer (auto-detect): `install_driver.sh`
+
 ## Runtime Model
 
 The daemon has two modes:
@@ -32,9 +44,10 @@ The daemon has two modes:
   - long press launches or foregrounds the selected app
 - Foreground app mode:
   - normal button press/release events are forwarded to the foreground app
-  - 4 rapid clicks are reserved globally and trigger app exit request
+  - by default, 4 rapid clicks are reserved globally and trigger app exit request
+  - apps can explicitly declare `exit_gesture: "long_press"` to use long press instead
 
-When 4-click exit is detected, the daemon sends `app_exit_requested` to the foreground app. The app should stop work, release focus, and exit quickly.
+When the configured exit gesture is detected, the daemon sends `app_exit_requested` to the foreground app. The app should stop work, release focus, and exit quickly.
 
 ## IPC Basics
 
@@ -80,6 +93,9 @@ Payload:
   "env": {
     "MY_FLAG": "1"
   },
+  "exit_gesture": "quad_click",
+  "priority": 50,
+  "use_daemon_default_log": true,
   "persist": true
 }
 ```
@@ -88,7 +104,11 @@ Notes:
 
 - `app_id` must be stable and unique.
 - `launch_command` is what the daemon uses when the user launches the app from desktop.
-- `persist: true` stores the app in daemon config for future boots.
+- `persist: true` stores the app as a JSON file in `~/.whisplay-daemon/app/` for future boots.
+- `exit_gesture` is optional. Valid values are `quad_click` and `long_press`. Default is `quad_click`.
+- `priority` is optional. Higher values appear earlier on the desktop. Default is `0`.
+- `use_daemon_default_log` is optional. When `true`, the app's stdout/stderr are appended to `~/.whisplay-daemon/daemon-app.log`.
+- The daemon does not inject built-in apps at runtime. The install script seeds the default example app JSON files into `~/.whisplay-daemon/app/`.
 
 ### `app.list`
 

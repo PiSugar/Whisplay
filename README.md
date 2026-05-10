@@ -23,86 +23,58 @@ The device utilizes **I2C, SPI, and I2S** buses. The **I2S and I2C buses** are u
 
 ### Installation
 
-#### Raspberry Pi
-
-After cloning the github project, navigate to the Driver directory and use the script to install.
+After cloning the project, run the unified installer entry:
 
 ```bash
 git clone https://github.com/PiSugar/Whisplay.git --depth 1
-cd Whisplay/Driver
-sudo bash install_wm8960_drive.sh
+cd Whisplay
+sudo bash install_driver.sh
 sudo reboot
 ```
-The program can be tested after the driver is installed.
-
-```shell
-cd Whisplay/example
-sudo bash run_test.sh
-```
-
-#### Radxa ZERO 3W
-
-After cloning the github project, navigate to the Driver directory and use the Radxa-specific script to install.
-
-```bash
-git clone https://github.com/PiSugar/Whisplay.git --depth 1
-cd Whisplay/Driver
-sudo bash install_radxa_zero3w.sh
-sudo reboot
-```
-
-The installation script will:
-1. Install Python dependencies (`python3-libgpiod`, `python3-spidev`, `python3-pil`, `python3-pygame`)
-2. Enable SPI3_M1 overlay (for LCD display)
-3. Enable I2S3 overlay (for WM8960 audio)
-4. Configure WM8960 audio driver (if kernel module is available)
-
-After rebooting, test the setup:
-
-```shell
-cd Whisplay/example
-sudo bash run_test.sh
-```
-
-#### Radxa Cubie A7Z
 
 > ⚠️ **Important Hardware Warning (A7Z only)**  
 > Due to circuit incompatibility, the physical button on Whisplay HAT is **not safe to use on Radxa Cubie A7Z**.  
 > **Do not press the button**, otherwise the A7Z may shut down / lose power immediately.
 
-After cloning the github project, navigate to the Driver directory and use the Cubie A7Z-specific script to install.
-
-```bash
-git clone https://github.com/PiSugar/Whisplay.git --depth 1
-cd Whisplay/Driver
-sudo bash install_radxa_cubie_a7z.sh
-sudo reboot
-```
-
-The installation script will:
-1. Install Python dependencies (`python3-libgpiod`, `python3-spidev`, `python3-pil`, `python3-pygame`)
-2. Enable SPI1 overlay (for LCD display)
-3. Enable TWI7 overlay (for WM8960 I2C communication)
-4. Compile and install WM8960 audio overlay and kernel module
-5. Configure ALSA mixer
-
-After rebooting, test the setup:
-
 ```shell
 cd Whisplay/example
 sudo bash run_test.sh
 ```
 
-### Driver Structure
+### Whisplay Daemon Service
 
-All driver files are located in the `Driver` directory and primarily include:
+`whisplay-daemon` is an optional local service that centrally manages LCD, backlight, RGB LED, button events, and app foreground switching.
 
-#### 1. `Whisplay.py`
+Install and start it with:
 
-  * **Function**: This script encapsulates the LCD display, physical buttons, and LED indicators into easy-to-use Python objects, simplifying hardware operations. It **automatically detects the platform** (Raspberry Pi, Radxa ZERO 3W, or Radxa Cubie A7Z) and uses the appropriate GPIO library.
+```shell
+sudo bash daemon/install_whisplay_daemon_service.sh
+systemctl status whisplay-daemon.service --no-pager
+```
+
+After installation, daemon settings are stored in `~/.whisplay-daemon/settings.json`, and app entries are loaded from `~/.whisplay-daemon/app/`.
+
+### Project Structure
+
+The repo root is organized by responsibility:
+
+- `runtime/`: Python runtime modules including `whisplay.py` and `whisplay_client.py`
+- `install_driver.sh`: auto-detecting driver installer
+- `script/`: platform install scripts
+- `daemon/`: local hardware daemon, its service installer, and `default_apps/`
+- `audio/`: audio install assets and DTS overlays
+- `example/`: end-user demos
+
+#### 1. `runtime/whisplay.py`
+
+  * **Function**: Public Python entry point for the LCD, physical button, and LED helper classes.
   * **Quick Verification**: Refer to `example/test.py` to quickly test the LCD, LED, and button functions.
 
-#### 1.1 `whisplay_daemon.py`
+#### 1.1 `runtime/whisplay_client.py`
+
+  * **Function**: Python helper for daemon-mode apps.
+
+#### 1.2 `daemon/whisplay_daemon.py`
 
   * **Function**: Optional local hardware daemon that owns the LCD, backlight, RGB LED, button, and app lifecycle, and exposes a local Unix socket API for app registration, app switching, and shared framebuffer handoff.
   * **Protocol**: line-delimited JSON with `version: 1`
@@ -111,73 +83,50 @@ All driver files are located in the `Driver` directory and primarily include:
   * **Desktop behavior**: single click cycles registered apps, long press launches/foregrounds the selected app, and 4 rapid clicks request exit from the foreground app
   * **Install as service**:
     ```shell
-    cd Driver
-    sudo bash install_whisplay_daemon_service.sh
+    sudo bash daemon/install_whisplay_daemon_service.sh
     ```
+  * **Install result**: the installer writes `~/.whisplay-daemon/settings.json` and seeds the default example app JSON files into `~/.whisplay-daemon/app/`
 
 #### 2. WM8960 Audio Driver
 
   * **Source**: Audio driver support is provided by Waveshare (Raspberry Pi) or custom overlay (Radxa).
 
   * **Installation**:
-    - **Raspberry Pi**: Run `install_wm8960_drive.sh`
-    - **Radxa ZERO 3W**: Run `install_radxa_zero3w.sh`
-    - **Radxa Cubie A7Z**: Run `install_radxa_cubie_a7z.sh`
+    - **Auto-detect**: Run `install_driver.sh`
+    - **Raspberry Pi**: Run `script/install_raspberry_pi.sh`
+    - **Radxa ZERO 3W**: Run `script/install_radxa_zero3w.sh`
+    - **Radxa Cubie A7Z**: Run `script/install_radxa_cubie_a7z.sh`
 
     ```shell
-    cd Driver
-    # For Raspberry Pi:
-    sudo bash install_wm8960_drive.sh
+    sudo bash install_driver.sh
+    # Or run a platform-specific installer:
+    sudo bash script/install_raspberry_pi.sh
     # For Radxa ZERO 3W:
-    sudo bash install_radxa_zero3w.sh
+    sudo bash script/install_radxa_zero3w.sh
     # For Radxa Cubie A7Z:
-    sudo bash install_radxa_cubie_a7z.sh
+    sudo bash script/install_radxa_cubie_a7z.sh
     ```
 
 #### 3. Device Tree Overlays (Radxa only)
 
-  * `wm8960-radxa-zero3.dts` - DT overlay for WM8960 codec on Radxa ZERO 3W (RK3566), configuring I2C3 and I2S3.
-  * `wm8960-cubie-a7z.dts` - DT overlay for WM8960 codec on Radxa Cubie A7Z (Allwinner A733), configuring TWI7 and I2S0.
+  * `audio/wm8960-radxa-zero3.dts` - DT overlay for WM8960 codec on Radxa ZERO 3W (RK3566), configuring I2C3 and I2S3.
+  * `audio/wm8960-cubie-a7z.dts` - DT overlay for WM8960 codec on Radxa Cubie A7Z (Allwinner A733), configuring TWI7 and I2S0.
   * **Note**: These are automatically compiled and installed by the respective install scripts.
 
 
 ## Example Programs
 
-The `example` directory contains Python examples to help you get started quickly.
+The `example` directory keeps four end-user demos:
 
 #### `run_test.sh`
 
-  * **Function**: This script verifies that the LCD, LEDs, and buttons are functioning correctly.
+  * **Function**: Runs the end-to-end hardware test flow for screen, LED, speaker, button, microphone, and playback.
   * **Usage**:
     ```shell
     cd example
     sudo bash run_test.sh
     ```
-    You can also specify an image or sound for testing:
-    ```shell
-    sudo bash run_test.sh --image data/test2.jpg --sound data/test.mp3
-    ```
-    **Effect**: When executed, the script will display a test image on the LCD. Pressing any button will change the screen to a solid color, and the RGB LED will simultaneously change to match that color.
-
-#### `mic_test.sh`
-
-  * **Function**: This script tests the microphone functionality.
-  * **Usage**:
-    ```shell
-    cd example
-    sudo bash mic_test.sh
-    ```
-    **Effect**: The script records audio from the microphone for 10 seconds and plays it back through the speaker.
-
-#### `test2.py`
-
-  * **Function**: This script demonstrates recording audio and playback functionality.
-  * **Usage**:
-    ```shell
-    cd example
-    sudo python3 test2.py
-    ```
-    **Effect**: The script displays an image indicating the recording stage. Pressing the button to stop recording will switch to the playback stage, displaying a different image while playing back the recorded audio. After playback, it returns to the recording stage again.
+    **Effect**: The demo shows the logo countdown first, then walks through each hardware test step with on-screen instructions and a final summary.
 
 #### `play_mp4.py`
 
@@ -199,19 +148,25 @@ The `example` directory contains Python examples to help you get started quickly
     ```
     **Effect**: The specified MP4 video will be played on the LCD screen.
 
-#### `whisplay_daemon_client.py`
+#### `flappy_bird.py`
 
-  * **Function**: Simple daemon test client for health checks, app registration/listing/launching, LED/backlight control, foreground acquisition, and button event subscription.
+  * **Function**: Single-button Flappy Bird demo with game sound effects.
   * **Usage**:
     ```shell
     cd example
-    python3 whisplay_daemon_client.py ping
-    python3 whisplay_daemon_client.py apps
-    python3 whisplay_daemon_client.py register demo DemoApp --launch-command "python3 /path/to/app.py"
-    python3 whisplay_daemon_client.py led 255 0 0 --fade
-    python3 whisplay_daemon_client.py foreground demo --color f800
-    python3 whisplay_daemon_client.py subscribe
+    sudo python3 flappy_bird.py
     ```
+    **Effect**: Short press makes the bird flap. The game includes pseudo-arcade visuals, score tracking, and WM8960 playback effects.
+
+#### `jump_game.py`
+
+  * **Function**: Single-button Jump Game demo with pseudo-3D tilted rendering and sound effects.
+  * **Usage**:
+    ```shell
+    cd example
+    sudo python3 jump_game.py
+    ```
+    **Effect**: Hold to charge and release to jump. The demo is tuned for Pi Zero 2W class performance and uses on-screen prompts plus game audio.
 
 
 **Note: This software currently supports:**
