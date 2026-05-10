@@ -35,6 +35,35 @@ echo ""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DTBO_DIR="/boot/dtbo"
 
+install_spidev_python_module() {
+    echo "  Installing Python spidev module..."
+
+    if python3 -c "import spidev" >/dev/null 2>&1; then
+        echo "  Python spidev module already available"
+        return 0
+    fi
+
+    if apt-cache show python3-spidev >/dev/null 2>&1; then
+        apt-get install -y python3-spidev
+    else
+        echo "  python3-spidev package not found in apt, falling back to pip"
+
+        PIP_ARGS=(install spidev)
+        if python3 -m pip help install 2>/dev/null | grep -q -- "--break-system-packages"; then
+            PIP_ARGS=(install --break-system-packages spidev)
+        fi
+
+        python3 -m pip "${PIP_ARGS[@]}"
+    fi
+
+    if python3 -c "import spidev" >/dev/null 2>&1; then
+        echo "  Python spidev module installed successfully"
+    else
+        echo "  Error: Python spidev module installation failed"
+        exit 1
+    fi
+}
+
 # ==================== 1. Install System Dependencies ====================
 echo "[1/8] Installing system dependencies..."
 apt-get update -y
@@ -44,7 +73,6 @@ apt-get install -y \
     python3-pip \
     build-essential \
     python3-libgpiod \
-    python3-spidev \
     python3-pil \
     python3-pygame \
     i2c-tools \
@@ -55,6 +83,8 @@ apt-get install -y \
     gcc \
     wget \
     kmod
+
+install_spidev_python_module
 
 echo "  System dependencies installed"
 
