@@ -165,7 +165,7 @@ class DesktopRenderer:
         return width
 
     def _draw_desktop_legend(self, draw: ImageDraw.ImageDraw, x: int, y: int):
-        legend_color = (160, 190, 210)
+        legend_color = (60, 90, 100)
         label_gap = 4
         group_gap = 12
         dot_size = 8
