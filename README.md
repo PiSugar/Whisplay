@@ -54,6 +54,29 @@ systemctl status whisplay-daemon.service --no-pager
 
 After installation, daemon settings are stored in `~/.whisplay-daemon/settings.json`, and app entries are loaded from `~/.whisplay-daemon/app/`.
 
+Example daemon settings:
+
+```json
+{
+  "apps_dir": "~/.whisplay-daemon/app",
+  "pisugar_home_button": "single"
+}
+```
+
+`pisugar_home_button` controls which PiSugar button gesture returns from the foreground app back to daemon home. Supported values are `single`, `double`, `long`, and `none`. The default is `single`.
+
+To inspect daemon logs:
+
+```shell
+journalctl -u whisplay-daemon.service -f
+```
+
+If an app is configured with `use_daemon_default_log: true`, its stdout/stderr is appended to:
+
+```shell
+tail -f ~/.whisplay-daemon/daemon-app.log
+```
+
 ### Project Structure
 
 The repo root is organized by responsibility:
@@ -81,6 +104,7 @@ The repo root is organized by responsibility:
   * **Default socket path**: `/tmp/whisplay-daemon.sock`
   * **Commands**: `health.ping`, `app.register`, `app.list`, `app.launch`, `app.focus.acquire`, `app.focus.release`, `app.exit.request`, `framebuffer.acquire`, `backlight.set`, `led.set`, `led.fade`, `button.get_state`, `events.subscribe`
   * **Desktop behavior**: single click cycles registered apps, long press launches/foregrounds the selected app, and 4 rapid clicks request exit from the foreground app
+  * **PiSugar home integration**: if `pisugar-server` is running, daemon can automatically bind the PiSugar `single`, `double`, or `long` button gesture as a return-to-home trigger according to `~/.whisplay-daemon/settings.json`; set `pisugar_home_button` to `none` to disable it
   * **Install as service**:
     ```shell
     sudo bash daemon/install_whisplay_daemon_service.sh

@@ -54,6 +54,29 @@ systemctl status whisplay-daemon.service --no-pager
 
 安装完成后，daemon 设置保存在 `~/.whisplay-daemon/settings.json`，app 入口从 `~/.whisplay-daemon/app/` 加载。
 
+daemon 设置示例：
+
+```json
+{
+  "apps_dir": "~/.whisplay-daemon/app",
+  "pisugar_home_button": "single"
+}
+```
+
+`pisugar_home_button` 用于控制 PiSugar 的哪个按键事件会触发“从前台 app 返回 daemon 首页”。支持 `single`、`double`、`long`、`none`，默认值为 `single`。
+
+查看 daemon 日志：
+
+```shell
+journalctl -u whisplay-daemon.service -f
+```
+
+如果某个 app 配置了 `use_daemon_default_log: true`，它的 stdout/stderr 会追加到：
+
+```shell
+tail -f ~/.whisplay-daemon/daemon-app.log
+```
+
 ### 项目结构
 
 仓库根目录现在按职责拆分：
@@ -81,6 +104,7 @@ systemctl status whisplay-daemon.service --no-pager
   * **默认 Socket 路径**: `/tmp/whisplay-daemon.sock`
   * **支持命令**: `health.ping`、`app.register`、`app.list`、`app.launch`、`app.focus.acquire`、`app.focus.release`、`app.exit.request`、`framebuffer.acquire`、`backlight.set`、`led.set`、`led.fade`、`button.get_state`、`events.subscribe`
   * **桌面交互**: 单击切换 app、长按启动/切到前台，前台 app 内快速按 4 下请求退出并回到桌面
+  * **PiSugar 返回集成**: 如果系统中运行了 `pisugar-server`，daemon 会根据 `~/.whisplay-daemon/settings.json` 中的 `pisugar_home_button` 自动绑定 `single`、`double` 或 `long` 作为“返回首页”事件；设为 `none` 可关闭此功能
   * **安装为服务**:
     ```shell
     sudo bash daemon/install_whisplay_daemon_service.sh
