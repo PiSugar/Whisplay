@@ -36,6 +36,8 @@ sudo reboot
 > Due to circuit incompatibility, the physical button on Whisplay HAT is **not safe to use on Radxa Cubie A7Z**.  
 > **Do not press the button**, otherwise the A7Z may shut down / lose power immediately.
 
+Test the hardware functions with the demo script:
+
 ```shell
 cd Whisplay/example
 sudo bash run_test.sh
@@ -43,7 +45,9 @@ sudo bash run_test.sh
 
 ### Whisplay Daemon Service
 
-`whisplay-daemon` is an optional local service that centrally manages LCD, backlight, RGB LED, button events, and app foreground switching.
+`whisplay-daemon` is an optional local service that centrally manages LCD, backlight, RGB LED, button events, and app foreground switching. (Single click to switch app, long press to launch/foreground app, and 4 rapid clicks to request exit from foreground app)
+
+If you are using the daemon, other apps is not recommended to directly access the hardware, and should instead register with the daemon to get foreground control and shared framebuffer access.
 
 Install and start it with:
 

@@ -36,6 +36,8 @@ sudo reboot
 > 由于电路不兼容，Whisplay HAT 的物理按键在 Radxa Cubie A7Z 上**不可使用**。  
 > **请勿点击按键**，否则可能导致 A7Z 立即断电。
 
+使用示例脚本测试硬件功能：
+
 ```shell
 cd Whisplay/example
 sudo bash run_test.sh
@@ -43,7 +45,9 @@ sudo bash run_test.sh
 
 ### Whisplay Daemon 服务
 
-`whisplay-daemon` 是可选的本地服务，统一管理 LCD、背光、RGB LED、按键事件和 app 前台切换。
+`whisplay-daemon` 是可选的本地服务，统一管理 LCD、背光、RGB LED、按键事件和 app 前台切换。（单击切换 app，长按启动app，4下快速点击请求退出）
+
+如果你使用了 daemon，建议其他 app 不要直接访问硬件，而是通过注册到 daemon 来获取前台控制权和共享 framebuffer 访问。
 
 安装并启动命令：
 
