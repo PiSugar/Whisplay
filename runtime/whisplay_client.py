@@ -4,7 +4,7 @@ import socket
 import threading
 import time
 
-from whisplay import WhisPlayBoard
+from whisplay import WhisplayBoard
 
 
 DEFAULT_DAEMON_SOCKET_PATH = "/tmp/whisplay-daemon.sock"
@@ -278,4 +278,4 @@ def create_whisplay_hardware(
         daemon.start_event_listener()
         daemon.acquire_foreground()
         return daemon
-    return WhisPlayBoard()
+    return WhisplayBoard()

@@ -42,7 +42,7 @@ from daemon_shared import (
     resolve_runtime_config,
 )
 from daemon_status import StatusPoller
-from whisplay import WhisPlayBoard
+from whisplay import WhisplayBoard
 
 
 class WhisplayDaemon:
@@ -61,7 +61,7 @@ class WhisplayDaemon:
         self.running = True
         self.state_lock = threading.RLock()
         self.event_broadcaster = EventBroadcaster()
-        self.board = WhisPlayBoard()
+        self.board = WhisplayBoard()
         self.desktop = DesktopRenderer(self.board, SCRIPT_DIR)
         self.pisugar = PiSugarManager()
         self.status_poller = StatusPoller(self.pisugar)

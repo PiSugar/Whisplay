@@ -223,7 +223,7 @@ class SoftPWM:
                 time.sleep(off_time)
 
 
-class WhisPlayBoard:
+class WhisplayBoard:
     # LCD parameters
     LCD_WIDTH = 240
     LCD_HEIGHT = 280
