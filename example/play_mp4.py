@@ -48,6 +48,14 @@ def get_ffmpeg_cmd(video_path, width, height):
         '-'
     ]
 
+def start_audio_process(video_path):
+    # Plays audio via ALSA's default device. Use ffplay or mpv if you have them.
+    return subprocess.Popen(
+        ['ffplay', '-nodisp', '-autoexit', '-loglevel', 'quiet', video_path],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
 def play_video(video_path):
     board = WhisPlayBoard()
     board.set_backlight(100)
@@ -61,6 +69,7 @@ def play_video(video_path):
         return subprocess.Popen(cmd, stdout=subprocess.PIPE, bufsize=frame_size)
 
     process = start_process()
+    audio = start_audio_process(video_path)
 
     gc.collect()
     gc.disable()
