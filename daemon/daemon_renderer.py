@@ -211,7 +211,7 @@ class DesktopRenderer:
         if not apps:
             draw.text((left, top_margin + 48), "No apps registered", fill=(255, 200, 120), font=self.body_font)
             frame = image_to_rgb565_bytes(image)
-            self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, list(frame))
+            self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
             return
 
         selected = apps[selected_index % len(apps)]
@@ -263,4 +263,125 @@ class DesktopRenderer:
             draw.text((modal_x + modal_w - 22, modal_y + 12), spinner, fill=(120, 220, 255), font=self.body_font)
 
         frame = image_to_rgb565_bytes(image)
-        self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, list(frame))
+        self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
+
+    def render_internal_app(self, view_model: dict):
+        kind = view_model.get("kind")
+        if kind == "keyboard":
+            self._render_keyboard(view_model)
+            return
+        self._render_list_page(view_model)
+
+    def _draw_internal_legend(self, draw: ImageDraw.ImageDraw, x: int, y: int):
+        legend_color = (60, 90, 100)
+        label_gap = 4
+        group_gap = 12
+        dot_size = 8
+        pill_w = 18
+        pill_h = 8
+
+        cursor_x = x
+        cursor_x += self._draw_legend_pill(draw, cursor_x, y + 4, dot_size, dot_size, legend_color)
+        cursor_x += label_gap
+        draw.text((cursor_x, y), "next", fill=legend_color, font=self.small_font)
+        cursor_x += self.small_font.getbbox("next")[2] + group_gap
+
+        cursor_x += self._draw_legend_pill(draw, cursor_x, y + 4, pill_w, pill_h, legend_color)
+        cursor_x += label_gap
+        draw.text((cursor_x, y), "select", fill=legend_color, font=self.small_font)
+
+    def _render_list_page(self, view_model: dict):
+        image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (9, 14, 24))
+        draw = ImageDraw.Draw(image)
+
+        title = str(view_model.get("title") or "System")
+        subtitle = str(view_model.get("subtitle") or "")
+        items = list(view_model.get("items") or [])
+        selected_index = int(view_model.get("selected_index") or 0)
+        status = str(view_model.get("status") or "")
+        busy = bool(view_model.get("busy"))
+        detail_lines = list(view_model.get("detail_lines") or [])
+
+        left = 14
+        top = 10
+        draw.text((left, top), title, fill=(255, 255, 255), font=self.title_font)
+        self._draw_internal_legend(draw, left, top + 24)
+        if subtitle:
+            draw.text((left, top + 42), subtitle[:30], fill=(126, 162, 200), font=self.small_font)
+
+        card_y = 74
+        card_h = 132
+        draw.rounded_rectangle((10, card_y, SCREEN_WIDTH - 10, card_y + card_h), radius=12, fill=(15, 24, 36))
+        if not items:
+            draw.text((left, card_y + 20), "No items", fill=(255, 200, 120), font=self.body_font)
+        else:
+            selected_index = max(0, min(selected_index, len(items) - 1))
+            visible_count = min(4, len(items))
+            start_index = max(0, min(selected_index, len(items) - visible_count))
+            y = card_y + 12
+            for idx in range(start_index, start_index + visible_count):
+                item = items[idx]
+                item_title = str(item.get("title") or "")
+                item_meta = str(item.get("meta") or "")
+                if idx == selected_index:
+                    color = (255, 255, 255)
+                    meta_color = (130, 224, 170)
+                    font = self.body_font
+                    draw.text((left, y), ">", fill=color, font=font)
+                elif abs(idx - selected_index) == 1:
+                    color = (176, 186, 208)
+                    meta_color = (100, 124, 148)
+                    font = self.small_font
+                else:
+                    color = (106, 118, 138)
+                    meta_color = (82, 92, 108)
+                    font = self.small_font
+                draw.text((left + 18, y), item_title[:20], fill=color, font=font)
+                if item_meta:
+                    draw.text((left + 18, y + 16), item_meta[:32], fill=meta_color, font=self.small_font)
+                y += 28
+
+        status_y = card_y + card_h + 12
+        draw.rounded_rectangle((10, status_y, SCREEN_WIDTH - 10, status_y + 42), radius=10, fill=(18, 30, 44))
+        status_fill = (255, 218, 96) if busy else (156, 214, 255)
+        draw.text((left, status_y + 6), "Status", fill=(255, 255, 255), font=self.small_font)
+        if detail_lines:
+            draw.text((left, status_y + 18), detail_lines[0][:30], fill=status_fill, font=self.small_font)
+            if len(detail_lines) > 1:
+                draw.text((left, status_y + 30), detail_lines[1][:30], fill=(190, 220, 255), font=self.small_font)
+        else:
+            draw.text((left, status_y + 20), status[:30], fill=status_fill, font=self.small_font)
+        frame = image_to_rgb565_bytes(image)
+        self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
+
+    def _render_keyboard(self, view_model: dict):
+        image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (11, 16, 26))
+        draw = ImageDraw.Draw(image)
+
+        title = str(view_model.get("title") or "Keyboard")
+        subtitle = str(view_model.get("subtitle") or "")
+        password = str(view_model.get("password") or "")
+        password_length = int(view_model.get("password_length") or 0)
+        status = str(view_model.get("status") or "")
+
+        left = 14
+        top = 10
+        draw.text((left, top), title, fill=(255, 255, 255), font=self.title_font)
+        draw.text((left, top + 22), subtitle[:24], fill=(130, 180, 230), font=self.small_font)
+
+        draw.rounded_rectangle((10, 56, SCREEN_WIDTH - 10, 104), radius=12, fill=(18, 28, 42))
+        draw.text((left, 64), "Password", fill=(255, 255, 255), font=self.small_font)
+        display_password = password[-24:] if password else "<empty>"
+        draw.text((left, 82), display_password, fill=(120, 255, 140), font=self.body_font)
+
+        draw.rounded_rectangle((10, 116, SCREEN_WIDTH - 10, 196), radius=12, fill=(17, 28, 39))
+        draw.text((left, 126), "External keyboard", fill=(255, 255, 255), font=self.small_font)
+        draw.text((left, 148), f"{password_length} chars typed", fill=(255, 214, 94), font=self.title_font)
+        draw.text((left, 176), "Enter connect  Esc cancel", fill=(118, 136, 156), font=self.small_font)
+
+        draw.rounded_rectangle((10, 208, SCREEN_WIDTH - 10, 250), radius=10, fill=(18, 30, 44))
+        draw.text((left, 216), status[:30], fill=(156, 214, 255), font=self.small_font)
+        draw.text((left, 258), "Backspace delete", fill=(90, 106, 124), font=self.small_font)
+
+        frame = image_to_rgb565_bytes(image)
+        self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)

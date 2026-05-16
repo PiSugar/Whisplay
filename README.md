@@ -47,6 +47,11 @@ sudo bash run_test.sh
 
 `whisplay-daemon` is an optional local service that centrally manages LCD, backlight, RGB LED, button events, and app foreground switching. (Single click to switch app, long press to launch/foreground app, and 4 rapid clicks to request exit from foreground app)
 
+The daemon now also ships with two built-in system entries:
+
+- `Bluetooth`: opens an internal page that scans nearby Bluetooth devices and lets you bind or unbind the selected device
+- `WiFi`: opens an internal page that scans nearby Wi-Fi networks and lets you connect; protected networks use an on-device single-button keyboard for password entry
+
 If you are using the daemon, other apps is not recommended to directly access the hardware, and should instead register with the daemon to get foreground control and shared framebuffer access.
 
 Install and start it with:
@@ -108,6 +113,8 @@ The repo root is organized by responsibility:
   * **Default socket path**: `/tmp/whisplay-daemon.sock`
   * **Commands**: `health.ping`, `app.register`, `app.list`, `app.launch`, `app.focus.acquire`, `app.focus.release`, `app.exit.request`, `framebuffer.acquire`, `backlight.set`, `led.set`, `led.fade`, `button.get_state`, `events.subscribe`
   * **Desktop behavior**: single click cycles registered apps, long press launches/foregrounds the selected app, and 4 rapid clicks request exit from the foreground app
+  * **Built-in system pages**: includes `Bluetooth` and `WiFi` entries rendered by the daemon itself, without spawning an external app process
+  * **Wi-Fi password input**: on the password page, short press cycles characters and long press selects them; special keys include `<DEL>`, `<SPACE>`, `<OK>`, and `<CANCEL>`
   * **PiSugar home integration**: if `pisugar-server` is running, daemon can automatically bind the PiSugar `single`, `double`, or `long` button gesture as a return-to-home trigger according to `~/.whisplay-daemon/settings.json`; set `pisugar_home_button` to `none` to disable it
   * **Install as service**:
     ```shell

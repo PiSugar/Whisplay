@@ -41,6 +41,7 @@ from daemon_shared import (
     parse_args,
     resolve_runtime_config,
 )
+from internal_apps import ExternalKeyboardReader, InternalAppManager
 from daemon_status import StatusPoller
 from whisplay import WhisplayBoard
 
@@ -65,6 +66,8 @@ class WhisplayDaemon:
         self.desktop = DesktopRenderer(self.board, SCRIPT_DIR)
         self.pisugar = PiSugarManager()
         self.status_poller = StatusPoller(self.pisugar)
+        self.internal_apps = InternalAppManager()
+        self.keyboard_reader = ExternalKeyboardReader()
         self.pisugar_home_button = self._normalize_pisugar_home_button(pisugar_home_button)
         self.apps: dict[str, AppRecord] = {}
         self.selected_app_index = 0
@@ -80,8 +83,57 @@ class WhisplayDaemon:
         self._render_thread = threading.Thread(target=self._render_loop, daemon=True)
         self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self._load_apps()
+        self._register_internal_apps()
         self.board.on_button_press(self._on_button_pressed)
         self.board.on_button_release(self._on_button_released)
+
+    def _move_desktop_selection(self, delta: int):
+        apps = self._app_list()
+        if not apps:
+            self._render_desktop()
+            return
+        self.selected_app_index = (self.selected_app_index + delta) % len(apps)
+        self._render_desktop()
+
+    def _handle_keyboard_action(self, action: str):
+        with self.state_lock:
+            if self.foreground_app_id and self.internal_apps.text_input_active():
+                self.internal_apps.handle_keyboard_action(self.foreground_app_id, action)
+                if self.internal_apps.consume_dirty():
+                    self._render_internal_app()
+                return
+
+            if action == "cancel":
+                if self.foreground_app_id:
+                    app = self.apps.get(self.foreground_app_id)
+                    if app is not None:
+                        self._request_exit(app, "keyboard_escape_exit")
+                return
+
+            if self.foreground_app_id and self.internal_apps.is_internal_app(self.foreground_app_id):
+                if action in {"up", "down", "submit"}:
+                    self.internal_apps.handle_keyboard_action(self.foreground_app_id, action)
+                    if self.internal_apps.exit_requested:
+                        self.internal_apps.clear_exit_requested()
+                        app = self.apps.get(self.foreground_app_id)
+                        if app is not None:
+                            self._release_focus(app, "list_back")
+                        return
+                    if self.internal_apps.consume_dirty():
+                        self._render_internal_app()
+                return
+
+            if self.foreground_app_id:
+                return
+
+            if action == "up":
+                self._move_desktop_selection(-1)
+            elif action == "down":
+                self._move_desktop_selection(1)
+            elif action == "submit":
+                selected = self._current_selected_app()
+                if selected is not None:
+                    self._launch_app(selected)
 
     def _normalize_priority(self, value) -> int:
         try:
@@ -156,6 +208,11 @@ class WhisplayDaemon:
                 persist=bool(item.get("persist", False)),
             )
 
+    def _register_internal_apps(self):
+        for app in self.internal_apps.builtin_apps():
+            if app.app_id not in self.apps:
+                self.apps[app.app_id] = app
+
     def _save_app(self, app: AppRecord):
         path = self._persisted_app_path(app.app_id)
         if not app.persist:
@@ -199,6 +256,13 @@ class WhisplayDaemon:
             self.status_poller.wifi_signal_level,
             self.status_poller.battery_level,
         )
+
+    def _render_internal_app(self):
+        if not self.internal_apps.is_internal_app(self.foreground_app_id):
+            return
+        self.last_frame = None
+        view_model = self.internal_apps.get_view_model(self.foreground_app_id)
+        self.desktop.render_internal_app(view_model)
 
     def _allocate_framebuffer(self, app: AppRecord):
         framebuffer_path = f"/tmp/whisplay-fb-{app.app_id}-{uuid.uuid4().hex}.bin"
@@ -277,6 +341,9 @@ class WhisplayDaemon:
 
     def _request_exit(self, app: AppRecord, reason: str):
         print(f"[WhisplayDaemon] Exit requested for {app.app_id}: {reason}")
+        if self.internal_apps.is_internal_app(app.app_id):
+            self._release_focus(app, reason)
+            return
         self._foreground_long_press_fired = True
         self.exit_request = {
             "app_id": app.app_id,
@@ -341,6 +408,15 @@ class WhisplayDaemon:
             )
 
     def _launch_app(self, app: AppRecord):
+        if self.internal_apps.is_internal_app(app.app_id):
+            self.foreground_app_id = app.app_id
+            self.pending_launch_app_id = None
+            self.pending_launch_started_at = 0.0
+            self.exit_request = None
+            self._foreground_long_press_fired = False
+            self.internal_apps.activate(app.app_id)
+            self._render_internal_app()
+            return
         if not app.launch_command:
             raise RuntimeError(f"app {app.app_id} has no launch command")
         if app.is_running():
@@ -385,9 +461,9 @@ class WhisplayDaemon:
         with self.state_lock:
             self._button_press_started_at = time.time()
             self._foreground_long_press_fired = False
-            if not self.foreground_app_id:
+            if not self.foreground_app_id or self.internal_apps.is_internal_app(self.foreground_app_id):
                 self.board.set_rgb(0, 0, 255)
-            if self.foreground_app_id:
+            if self.foreground_app_id and not self.internal_apps.is_internal_app(self.foreground_app_id):
                 self.event_broadcaster.broadcast(
                     "button_pressed",
                     {"app_id": self.foreground_app_id},
@@ -396,7 +472,7 @@ class WhisplayDaemon:
 
     def _on_button_released(self):
         with self.state_lock:
-            if not self.foreground_app_id:
+            if not self.foreground_app_id or self.internal_apps.is_internal_app(self.foreground_app_id):
                 self.board.set_rgb(0, 0, 0)
             now = time.time()
             press_duration = now - self._button_press_started_at if self._button_press_started_at else 0
@@ -404,25 +480,40 @@ class WhisplayDaemon:
 
             if self.foreground_app_id:
                 app = self.apps.get(self.foreground_app_id)
-                self.event_broadcaster.broadcast(
-                    "button_released",
-                    {"app_id": self.foreground_app_id},
-                    app_id=self.foreground_app_id,
-                )
+                is_internal_app = self.internal_apps.is_internal_app(self.foreground_app_id)
+                if not self.internal_apps.is_internal_app(self.foreground_app_id):
+                    self.event_broadcaster.broadcast(
+                        "button_released",
+                        {"app_id": self.foreground_app_id},
+                        app_id=self.foreground_app_id,
+                    )
                 if app and app.exit_gesture == EXIT_GESTURE_QUAD_CLICK:
+                    quad_click_window_sec = 5.0 if is_internal_app else QUAD_CLICK_WINDOW_SEC
                     self._recent_release_times = [
-                        value for value in self._recent_release_times if now - value <= QUAD_CLICK_WINDOW_SEC
+                        value for value in self._recent_release_times if now - value <= quad_click_window_sec
                     ]
                     self._recent_release_times.append(now)
                     print(
                         f"[WhisplayDaemon] foreground click count={len(self._recent_release_times)} "
-                        f"window={QUAD_CLICK_WINDOW_SEC}s app={self.foreground_app_id}"
+                        f"window={quad_click_window_sec}s app={self.foreground_app_id}"
                     )
                     if len(self._recent_release_times) >= 4:
                         self._recent_release_times = []
                         self._request_exit(app, "quad_click_exit")
+                        return
                 else:
                     self._recent_release_times = []
+                if is_internal_app:
+                    self.internal_apps.handle_button_release(
+                        self.foreground_app_id,
+                        press_duration >= BUTTON_LONG_PRESS_SEC,
+                    )
+                    self.pisugar.poll_home_trigger()
+                    if self.internal_apps.exit_requested:
+                        self.internal_apps.clear_exit_requested()
+                        self._release_focus(app, "list_back")
+                        return
+                    self._render_internal_app()
                 return
 
             self._recent_release_times = []
@@ -441,6 +532,7 @@ class WhisplayDaemon:
     def _render_loop(self):
         interval = 1.0 / RENDER_FPS
         while self.running:
+            frame = None
             with self.state_lock:
                 app_id = self.foreground_app_id
                 app = self.apps.get(app_id) if app_id else None
@@ -448,9 +540,9 @@ class WhisplayDaemon:
                 if framebuffer is not None:
                     framebuffer.seek(0)
                     frame = framebuffer.read(FRAMEBUFFER_SIZE)
-                    if frame != self.last_frame:
-                        self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, list(frame))
-                        self.last_frame = frame
+            if frame is not None and frame != self.last_frame:
+                self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
+                self.last_frame = frame
             time.sleep(interval)
 
     def _monitor_loop(self):
@@ -474,6 +566,10 @@ class WhisplayDaemon:
                             self._render_desktop()
                 if self.pending_launch_app_id and not self.foreground_app_id:
                     self._render_desktop()
+                if self.foreground_app_id and self.internal_apps.is_internal_app(self.foreground_app_id):
+                    self.internal_apps.tick(self.foreground_app_id)
+                    if self.internal_apps.consume_dirty():
+                        self._render_internal_app()
                 if (
                     self.pending_launch_app_id
                     and not self.foreground_app_id
@@ -493,13 +589,16 @@ class WhisplayDaemon:
                             app = self.apps.get(self.foreground_app_id)
                             if app and app.exit_gesture == EXIT_GESTURE_LONG_PRESS and not self._foreground_long_press_fired:
                                 self._request_exit(app, "long_press_exit")
+                            elif self.internal_apps.is_internal_app(self.foreground_app_id):
+                                flash_on = int(time.time() * 5) % 2 == 0
+                                self.board.set_rgb(0, 255, 0) if flash_on else self.board.set_rgb(0, 0, 0)
                         else:
                             flash_on = int(time.time() * 5) % 2 == 0
                             self.board.set_rgb(0, 255, 0) if flash_on else self.board.set_rgb(0, 0, 0)
                     else:
                         self._button_press_started_at = 0.0
                         self._foreground_long_press_fired = False
-                        if not self.foreground_app_id:
+                        if not self.foreground_app_id or self.internal_apps.is_internal_app(self.foreground_app_id):
                             self.board.set_rgb(0, 0, 0)
                 if self.exit_request is not None and time.time() >= self.exit_request["deadline"]:
                     app = self.apps.get(self.exit_request["app_id"])
@@ -739,6 +838,8 @@ class WhisplayDaemon:
         self._refresh_status_icons(force=True)
         self._render_desktop()
         self._init_pisugar_integration()
+        self.internal_apps.start()
+        self.keyboard_reader.start(self._handle_keyboard_action)
         self._render_thread.start()
         self._monitor_thread.start()
         print(f"[WhisplayDaemon] Listening on {self.socket_path}")
@@ -758,6 +859,8 @@ class WhisplayDaemon:
         except Exception:
             pass
         self.event_broadcaster.broadcast("daemon_stopping")
+        self.internal_apps.stop()
+        self.keyboard_reader.stop()
         with self.state_lock:
             for app in self.apps.values():
                 self._teardown_framebuffer(app)

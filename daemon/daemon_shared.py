@@ -107,14 +107,26 @@ def parse_args():
 
 
 def image_to_rgb565_bytes(image: Image.Image) -> bytes:
+    try:
+        import numpy as np
+        arr = np.asarray(image.convert("RGB"), dtype=np.uint16)
+        r = arr[:, :, 0]
+        g = arr[:, :, 1]
+        b = arr[:, :, 2]
+        rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+        return rgb565.astype(">u2").tobytes()
+    except ImportError:
+        pass
     image = image.convert("RGB")
-    output = bytearray()
-    for y in range(image.height):
-        for x in range(image.width):
-            r, g, b = image.getpixel((x, y))
-            rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
-            output.append((rgb565 >> 8) & 0xFF)
-            output.append(rgb565 & 0xFF)
+    pixels = image.tobytes()
+    length = len(pixels) // 3
+    output = bytearray(length * 2)
+    for i in range(length):
+        off = i * 3
+        r, g, b = pixels[off], pixels[off + 1], pixels[off + 2]
+        rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+        output[i * 2] = (rgb565 >> 8) & 0xFF
+        output[i * 2 + 1] = rgb565 & 0xFF
     return bytes(output)
 
 

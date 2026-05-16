@@ -47,6 +47,11 @@ sudo bash run_test.sh
 
 `whisplay-daemon` 是可选的本地服务，统一管理 LCD、背光、RGB LED、按键事件和 app 前台切换。（单击切换 app，长按启动app，4下快速点击请求退出）
 
+当前 daemon 还内置了两个系统入口：
+
+- `Bluetooth`：进入内部页面后可扫描附近蓝牙设备，并对选中设备执行绑定/解绑
+- `WiFi`：进入内部页面后可扫描附近 Wi‑Fi，选择网络并连接；加密网络会进入单按键屏上键盘输入密码
+
 如果你使用了 daemon，建议其他 app 不要直接访问硬件，而是通过注册到 daemon 来获取前台控制权和共享 framebuffer 访问。
 
 安装并启动命令：
@@ -108,6 +113,8 @@ tail -f ~/.whisplay-daemon/daemon-app.log
   * **默认 Socket 路径**: `/tmp/whisplay-daemon.sock`
   * **支持命令**: `health.ping`、`app.register`、`app.list`、`app.launch`、`app.focus.acquire`、`app.focus.release`、`app.exit.request`、`framebuffer.acquire`、`backlight.set`、`led.set`、`led.fade`、`button.get_state`、`events.subscribe`
   * **桌面交互**: 单击切换 app、长按启动/切到前台，前台 app 内快速按 4 下请求退出并回到桌面
+  * **内建系统页**: 默认包含 `Bluetooth` 和 `WiFi` 两个入口，均由 daemon 自身渲染，无需外部 app 进程
+  * **WiFi 输入方式**: 在密码页中短按切换字符、长按输入/执行，可使用 `<DEL>`、`<SPACE>`、`<OK>`、`<CANCEL>`
   * **PiSugar 返回集成**: 如果系统中运行了 `pisugar-server`，daemon 会根据 `~/.whisplay-daemon/settings.json` 中的 `pisugar_home_button` 自动绑定 `single`、`double` 或 `long` 作为“返回首页”事件；设为 `none` 可关闭此功能
   * **安装为服务**:
     ```shell

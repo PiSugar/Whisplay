@@ -20,6 +20,92 @@ if runtime_dir not in sys.path:
 
 from whisplay_client import create_whisplay_hardware
 
+import select
+
+EV_KEY = 0x01
+KEY_SPACE = 57
+_INPUT_EVENT_FORMAT = "llHHI"
+_INPUT_EVENT_SIZE = struct.calcsize(_INPUT_EVENT_FORMAT)
+
+
+def _start_keyboard_listener(on_press, on_release):
+    """Listen for space key on external keyboards, trigger callbacks."""
+    def _loop():
+        import os as _os
+        fds: dict[int, str] = {}
+        last_scan = 0.0
+        while True:
+            now = time.monotonic()
+            if now - last_scan >= 2.0:
+                last_scan = now
+                paths = set()
+                by_id = "/dev/input/by-id"
+                try:
+                    for e in _os.listdir(by_id):
+                        if e.endswith("-kbd"):
+                            paths.add(_os.path.realpath(_os.path.join(by_id, e)))
+                except FileNotFoundError:
+                    pass
+                if not paths:
+                    try:
+                        paths = {
+                            _os.path.join("/dev/input", e)
+                            for e in _os.listdir("/dev/input")
+                            if e.startswith("event")
+                        }
+                    except FileNotFoundError:
+                        pass
+                stale = [fd for fd, p in fds.items() if p not in paths]
+                for fd in stale:
+                    try:
+                        _os.close(fd)
+                    except OSError:
+                        pass
+                    del fds[fd]
+                for p in paths - set(fds.values()):
+                    try:
+                        fds[_os.open(p, _os.O_RDONLY | _os.O_NONBLOCK)] = p
+                    except OSError:
+                        pass
+            if not fds:
+                time.sleep(1)
+                continue
+            try:
+                ready, _, _ = select.select(list(fds), [], [], 0.02)
+            except (ValueError, OSError):
+                for fd in list(fds):
+                    try:
+                        _os.close(fd)
+                    except OSError:
+                        pass
+                fds.clear()
+                continue
+            for fd in ready:
+                try:
+                    data = _os.read(fd, _INPUT_EVENT_SIZE * 16)
+                except OSError:
+                    try:
+                        _os.close(fd)
+                    except OSError:
+                        pass
+                    fds.pop(fd, None)
+                    continue
+                off = 0
+                while off + _INPUT_EVENT_SIZE <= len(data):
+                    _, _, ev_type, code, value = struct.unpack(
+                        _INPUT_EVENT_FORMAT, data[off:off + _INPUT_EVENT_SIZE]
+                    )
+                    if ev_type == EV_KEY and code == KEY_SPACE:
+                        if value == 1:
+                            on_press()
+                        elif value == 0:
+                            on_release()
+                    off += _INPUT_EVENT_SIZE
+
+    t = threading.Thread(target=_loop, daemon=True)
+    t.start()
+    return t
+
 
 SCREEN_WIDTH = 240
 SCREEN_HEIGHT = 280
@@ -389,6 +475,7 @@ class FlappyBirdGame:
             self.board.on_exit_request(self._on_exit_request)
         if hasattr(self.board, "on_focus_revoked"):
             self.board.on_focus_revoked(self._on_focus_revoked)
+        _start_keyboard_listener(self._on_button_press, self._on_button_release)
 
     def _on_button_press(self):
         with self.lock:

@@ -18,6 +18,16 @@ if [ -z "$PYTHON_BIN" ]; then
   exit 1
 fi
 
+echo "Ensuring python3-numpy is installed (for fast RGB565 conversion)..."
+if ! "$PYTHON_BIN" -c "import numpy" 2>/dev/null; then
+  sudo apt-get install -y python3-numpy || echo "Warning: failed to install python3-numpy, falling back to pure-Python RGB565"
+fi
+
+echo "Ensuring ffmpeg is installed (required by play_mp4 app)..."
+if ! command -v ffmpeg >/dev/null 2>&1; then
+  sudo apt-get install -y ffmpeg || echo "Warning: failed to install ffmpeg; play_mp4 will not work until ffmpeg is available"
+fi
+
 if [ "$TARGET_USER" = "root" ] && [ -z "${SUDO_USER:-}" ]; then
   echo "Error: run this script as your normal user or via sudo preserving SUDO_USER."
   exit 1
@@ -52,7 +62,7 @@ After=network.target
 Type=simple
 User=$TARGET_USER
 Group=audio
-SupplementaryGroups=audio video gpio
+SupplementaryGroups=audio video gpio input
 WorkingDirectory=$PROJECT_ROOT
 ExecStart=$PYTHON_BIN $PROJECT_ROOT/daemon/whisplay_daemon.py
 Environment=HOME=$USER_HOME

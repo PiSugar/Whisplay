@@ -522,13 +522,22 @@ class WhisplayBoard:
 
     def _send_data(self, data):
         self._gpio_output(self.DC_PIN, 1)
-        
         try:
             self.spi.writebytes2(data)
         except AttributeError:
             max_chunk = 4096
             for i in range(0, len(data), max_chunk):
                 self.spi.writebytes(data[i : i + max_chunk])
+
+    def _send_data_bytes(self, data: bytes | bytearray):
+        """Fast path for bytes/bytearray — avoids Python list overhead."""
+        self._gpio_output(self.DC_PIN, 1)
+        try:
+            self.spi.writebytes2(data)
+        except AttributeError:
+            max_chunk = 4096
+            for i in range(0, len(data), max_chunk):
+                self.spi.writebytes(list(data[i : i + max_chunk]))
 
     def set_window(self, x0, y0, x1, y1, use_horizontal=0):
         if use_horizontal in (0, 1):
@@ -572,18 +581,19 @@ class WhisplayBoard:
 
     def fill_screen(self, color):
         self.set_window(0, 0, self.LCD_WIDTH - 1, self.LCD_HEIGHT - 1)
-        buffer = []
         high = (color >> 8) & 0xFF
         low = color & 0xFF
-        for _ in range(self.LCD_WIDTH * self.LCD_HEIGHT):
-            buffer.extend([high, low])
-        self._send_data(buffer)
+        buffer = bytes([high, low]) * (self.LCD_WIDTH * self.LCD_HEIGHT)
+        self._send_data_bytes(buffer)
 
     def draw_image(self, x, y, width, height, pixel_data):
         if (x + width > self.LCD_WIDTH) or (y + height > self.LCD_HEIGHT):
             raise ValueError("Image dimensions exceed screen bounds")
         self.set_window(x, y, x + width - 1, y + height - 1)
-        self._send_data(pixel_data)
+        if isinstance(pixel_data, (bytes, bytearray)):
+            self._send_data_bytes(pixel_data)
+        else:
+            self._send_data(pixel_data)
 
     # ========== RGB LED & Button ==========
     def set_rgb(self, r, g, b):

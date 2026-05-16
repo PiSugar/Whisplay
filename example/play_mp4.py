@@ -8,7 +8,8 @@ import urllib.request
 from PIL import Image, ImageDraw, ImageFont
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
-runtime_dir = os.path.abspath(os.path.join(current_dir, "..", "runtime"))
+project_root = os.path.dirname(current_dir)
+runtime_dir = os.path.join(project_root, "runtime")
 if runtime_dir not in sys.path:
     sys.path.append(runtime_dir)
 
@@ -151,7 +152,7 @@ def render_progress(board, width, height, percent, status_text="Downloading...")
                 rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
                 frame.append((rgb565 >> 8) & 0xFF)
                 frame.append(rgb565 & 0xFF)
-        board.draw_image(0, 0, width, height, list(frame))
+        board.draw_image(0, 0, width, height, bytes(frame))
     except Exception as e:
         print(f"Render progress error: {e}")
 
