@@ -8,6 +8,9 @@ from daemon_shared import SCREEN_HEIGHT, SCREEN_WIDTH, calculate_luminance, imag
 
 STATUS_ICON_HEIGHT = 15
 TITLE_FONT_SIZE = 17
+LIST_ITEM_ROW_HEIGHT = 40
+LIST_ITEM_META_OFFSET = 20
+LIST_VISIBLE_COUNT = 3
 WIFI_ICON_SCALE = 1.6
 WIFI_LEVEL_ICON_FILES = {
     1: "wifi-weak.png",
@@ -309,16 +312,16 @@ class DesktopRenderer:
         if subtitle:
             draw.text((left, top + 42), subtitle[:30], fill=(126, 162, 200), font=self.small_font)
 
-        card_y = 74
-        card_h = 132
+        card_y = 68
+        card_h = LIST_VISIBLE_COUNT * LIST_ITEM_ROW_HEIGHT + 16
         draw.rounded_rectangle((10, card_y, SCREEN_WIDTH - 10, card_y + card_h), radius=12, fill=(15, 24, 36))
         if not items:
             draw.text((left, card_y + 20), "No items", fill=(255, 200, 120), font=self.body_font)
         else:
             selected_index = max(0, min(selected_index, len(items) - 1))
-            visible_count = min(4, len(items))
+            visible_count = min(LIST_VISIBLE_COUNT, len(items))
             start_index = max(0, min(selected_index, len(items) - visible_count))
-            y = card_y + 12
+            y = card_y + 10
             for idx in range(start_index, start_index + visible_count):
                 item = items[idx]
                 item_title = str(item.get("title") or "")
@@ -336,10 +339,15 @@ class DesktopRenderer:
                     color = (106, 118, 138)
                     meta_color = (82, 92, 108)
                     font = self.small_font
-                draw.text((left + 18, y), item_title[:20], fill=color, font=font)
+                draw.text((left + 18, y), item_title[:22], fill=color, font=font)
                 if item_meta:
-                    draw.text((left + 18, y + 16), item_meta[:32], fill=meta_color, font=self.small_font)
-                y += 28
+                    draw.text(
+                        (left + 18, y + LIST_ITEM_META_OFFSET),
+                        item_meta[:34],
+                        fill=meta_color,
+                        font=self.small_font,
+                    )
+                y += LIST_ITEM_ROW_HEIGHT
 
         status_y = card_y + card_h + 12
         draw.rounded_rectangle((10, status_y, SCREEN_WIDTH - 10, status_y + 42), radius=10, fill=(18, 30, 44))
