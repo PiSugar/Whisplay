@@ -50,7 +50,7 @@ sudo bash run_test.sh
 当前 daemon 还内置了两个系统入口：
 
 - `Bluetooth`：进入内部页面后可扫描附近蓝牙设备，并对选中设备执行绑定/解绑
-- `WiFi`：进入内部页面后可扫描附近 Wi‑Fi，选择网络并连接；加密网络会进入单按键密码页，密码输入依赖设备接入的外接键盘
+- `WiFi`：进入内部页面后可扫描附近 Wi‑Fi，选择网络并连接；加密网络会进入密码输入页，密码输入依赖设备接入的外接键盘
 
 <p align="center">
   <img src="daemon/img/screenshots/whisplay_desktop.png" width="180" alt="Daemon 桌面" />
