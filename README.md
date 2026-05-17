@@ -50,7 +50,7 @@ sudo bash run_test.sh
 The daemon now also ships with two built-in system entries:
 
 - `Bluetooth`: opens an internal page that scans nearby Bluetooth devices and lets you bind or unbind the selected device
-- `WiFi`: opens an internal page that scans nearby Wi-Fi networks and lets you connect; protected networks use an on-device single-button keyboard for password entry
+- `WiFi`: opens an internal page that scans nearby Wi-Fi networks and lets you connect; protected networks enter a single-button password page, and actual password input depends on an attached external keyboard
 
 <p align="center">
   <img src="daemon/img/screenshots/whisplay_desktop.png" width="180" alt="Daemon Desktop" />
@@ -123,7 +123,7 @@ The repo root is organized by responsibility:
   * **Commands**: `health.ping`, `app.register`, `app.list`, `app.launch`, `app.focus.acquire`, `app.focus.release`, `app.exit.request`, `framebuffer.acquire`, `backlight.set`, `led.set`, `led.fade`, `button.get_state`, `events.subscribe`
   * **Desktop behavior**: single click cycles registered apps, long press launches/foregrounds the selected app, and 4 rapid clicks request exit from the foreground app
   * **Built-in system pages**: includes `Bluetooth` and `WiFi` entries rendered by the daemon itself, without spawning an external app process
-  * **Wi-Fi password input**: on the password page, short press cycles characters and long press selects them; special keys include `<DEL>`, `<SPACE>`, `<OK>`, and `<CANCEL>`
+  * **Wi-Fi password input**: selecting a protected network enters a single-button password page; password entry depends on an attached external keyboard (arrow keys / Enter / Backspace / ESC)
   * **PiSugar home integration**: if `pisugar-server` is running, daemon can automatically bind the PiSugar `single`, `double`, or `long` button gesture as a return-to-home trigger according to `~/.whisplay-daemon/settings.json`; set `pisugar_home_button` to `none` to disable it
   * **Install as service**:
     ```shell
@@ -160,7 +160,7 @@ The repo root is organized by responsibility:
 
 ## Example Programs
 
-The `example` directory keeps four end-user demos:
+The `example` directory contains 4 end-user demo programs. If you are using whisplay-daemon, you can see their entries directly on the daemon desktop; if not using the daemon, you can run these scripts directly to test hardware functions and experience the demo applications.
 
 #### `run_test.sh`
 

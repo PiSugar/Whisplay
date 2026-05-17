@@ -50,7 +50,7 @@ sudo bash run_test.sh
 当前 daemon 还内置了两个系统入口：
 
 - `Bluetooth`：进入内部页面后可扫描附近蓝牙设备，并对选中设备执行绑定/解绑
-- `WiFi`：进入内部页面后可扫描附近 Wi‑Fi，选择网络并连接；加密网络会进入单按键屏上键盘输入密码
+- `WiFi`：进入内部页面后可扫描附近 Wi‑Fi，选择网络并连接；加密网络会进入单按键密码页，密码输入依赖设备接入的外接键盘
 
 <p align="center">
   <img src="daemon/img/screenshots/whisplay_desktop.png" width="180" alt="Daemon 桌面" />
@@ -123,7 +123,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
   * **支持命令**: `health.ping`、`app.register`、`app.list`、`app.launch`、`app.focus.acquire`、`app.focus.release`、`app.exit.request`、`framebuffer.acquire`、`backlight.set`、`led.set`、`led.fade`、`button.get_state`、`events.subscribe`
   * **桌面交互**: 单击切换 app、长按启动/切到前台，前台 app 内快速按 4 下请求退出并回到桌面
   * **内建系统页**: 默认包含 `Bluetooth` 和 `WiFi` 两个入口，均由 daemon 自身渲染，无需外部 app 进程
-  * **WiFi 输入方式**: 在密码页中短按切换字符、长按输入/执行，可使用 `<DEL>`、`<SPACE>`、`<OK>`、`<CANCEL>`
+  * **WiFi 输入方式**: 选择加密网络后会进入单按键密码页；密码输入依赖外接键盘（方向键/回车/退格/ESC）
   * **PiSugar 返回集成**: 如果系统中运行了 `pisugar-server`，daemon 会根据 `~/.whisplay-daemon/settings.json` 中的 `pisugar_home_button` 自动绑定 `single`、`double` 或 `long` 作为“返回首页”事件；设为 `none` 可关闭此功能
   * **安装为服务**:
     ```shell
@@ -164,7 +164,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
 
 ## 示例程序
 
-`example` 目录下只保留 4 个面向用户的示例程序：
+`example` 目录下提供 4 个示例程序，如果你正在使用whisplay-daemon，你可以直接在 daemon 的桌面上看到它们的入口；如果没有使用 daemon，可以直接运行这些脚本来测试硬件功能和体验示例应用。
 
 #### `run_test.sh`
 
