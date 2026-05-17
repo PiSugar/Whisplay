@@ -92,6 +92,7 @@ class WifiNetwork:
     signal: int = 0
     security: str = ""
     active: bool = False
+    ipv4: str = ""
 
 
 @dataclass
@@ -630,10 +631,14 @@ class InternalAppManager:
             for network in self.wifi.networks:
                 security = network.security or "OPEN"
                 state = "connected" if network.active else security
+                if network.active and network.ipv4:
+                    detail = network.ipv4
+                else:
+                    detail = f"signal {network.signal}%"
                 items.append(
                     {
                         "title": network.ssid or "<Hidden SSID>",
-                        "meta": f"signal {network.signal}% | {state}",
+                        "meta": f"{detail} | {state}",
                     }
                 )
             return {
@@ -830,6 +835,41 @@ class InternalAppManager:
             return scan_signal
         return self._parse_bluetooth_signal(info_text)
 
+    def _get_connected_wifi_ipv4(self) -> str:
+        device_result = self._run_command(
+            ["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device"],
+            timeout=5.0,
+        )
+        if device_result.returncode != 0:
+            return ""
+        wifi_device = ""
+        for line in device_result.stdout.splitlines():
+            parts = line.strip().split(":")
+            if len(parts) < 3:
+                continue
+            device_name, device_type, state = parts[0], parts[1], ":".join(parts[2:])
+            if device_type != "wifi" or not state.startswith("connected"):
+                continue
+            wifi_device = device_name
+            break
+        if not wifi_device:
+            return ""
+
+        ip_result = self._run_command(
+            ["nmcli", "-t", "-f", "IP4.ADDRESS", "device", "show", wifi_device],
+            timeout=5.0,
+        )
+        if ip_result.returncode != 0:
+            return ""
+        for line in ip_result.stdout.splitlines():
+            if "IP4.ADDRESS" not in line:
+                continue
+            _, _, address = line.partition(":")
+            address = address.strip()
+            if address:
+                return address.split("/", 1)[0]
+        return ""
+
     def _refresh_wifi(self):
         with self._lock:
             self.wifi.busy = True
@@ -881,6 +921,12 @@ class InternalAppManager:
                     active=in_use.strip() == "*",
                 )
             )
+        connected_ipv4 = self._get_connected_wifi_ipv4()
+        if connected_ipv4:
+            for network in networks:
+                if network.active:
+                    network.ipv4 = connected_ipv4
+                    break
         networks.sort(key=lambda item: ((not item.active), -item.signal, item.ssid.lower()))
         networks = networks[: self.MAX_VISIBLE_ITEMS]
         with self._lock:
