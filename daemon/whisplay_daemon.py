@@ -107,6 +107,8 @@ class WhisplayDaemon:
                 if self.foreground_app_id:
                     app = self.apps.get(self.foreground_app_id)
                     if app is not None:
+                        if app.disable_esc_exit_key:
+                            return
                         self._request_exit(app, "keyboard_escape_exit")
                 return
 
@@ -172,6 +174,7 @@ class WhisplayDaemon:
             "priority": app.priority,
             "use_daemon_default_log": app.use_daemon_default_log,
             "persist": app.persist,
+            "disable_esc_exit_key": app.disable_esc_exit_key,
         }
 
     def _load_apps(self):
@@ -206,6 +209,7 @@ class WhisplayDaemon:
                 priority=self._normalize_priority(item.get("priority", 0)),
                 use_daemon_default_log=bool(item.get("use_daemon_default_log", False)),
                 persist=bool(item.get("persist", False)),
+                disable_esc_exit_key=bool(item.get("disable_esc_exit_key", False)),
             )
 
     def _register_internal_apps(self):
@@ -636,6 +640,8 @@ class WhisplayDaemon:
             record.use_daemon_default_log = bool(payload.get("use_daemon_default_log"))
         if payload.get("persist") is not None:
             record.persist = bool(payload.get("persist"))
+        if payload.get("disable_esc_exit_key") is not None:
+            record.disable_esc_exit_key = bool(payload.get("disable_esc_exit_key"))
         self._save_app(record)
         self._render_desktop()
         return {
@@ -645,6 +651,7 @@ class WhisplayDaemon:
             "exit_gesture": record.exit_gesture,
             "priority": record.priority,
             "use_daemon_default_log": record.use_daemon_default_log,
+            "disable_esc_exit_key": record.disable_esc_exit_key,
             "running": record.is_running(),
         }
 
@@ -658,6 +665,7 @@ class WhisplayDaemon:
                 "exit_gesture": app.exit_gesture,
                 "priority": app.priority,
                 "use_daemon_default_log": app.use_daemon_default_log,
+                "disable_esc_exit_key": app.disable_esc_exit_key,
                 "running": app.is_running(),
                 "selected": selected is not None and selected.app_id == app.app_id,
                 "foreground": self.foreground_app_id == app.app_id,

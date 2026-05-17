@@ -17,6 +17,7 @@ class AppRecord:
     priority: int = 0
     use_daemon_default_log: bool = False
     persist: bool = False
+    disable_esc_exit_key: bool = False
     process: subprocess.Popen | None = None
     process_log_handle = None
     subscribers: set = field(default_factory=set)

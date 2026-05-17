@@ -96,7 +96,8 @@ Payload：
   "exit_gesture": "quad_click",
   "priority": 50,
   "use_daemon_default_log": true,
-  "persist": true
+  "persist": true,
+  "disable_esc_exit_key": false
 }
 ```
 
@@ -108,6 +109,7 @@ Payload：
 - `exit_gesture` 是可选项，可取 `quad_click` 或 `long_press`，默认值为 `quad_click`
 - `priority` 是可选项，值越大在桌面中排得越靠前，默认值为 `0`
 - `use_daemon_default_log` 是可选项。为 `true` 时，app 的 stdout/stderr 会追加写入 `~/.whisplay-daemon/daemon-app.log`
+- `disable_esc_exit_key` 是可选项，默认值为 `false`。当设置为 `true` 时，该 app 处于前台时，外接键盘 `Esc` 不会触发返回 Home
 - daemon 运行时不会再注入内置 app。默认示例 app 的 JSON 文件由安装脚本同步到 `~/.whisplay-daemon/app/`
 
 ### `app.list`
