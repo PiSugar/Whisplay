@@ -40,7 +40,8 @@ Test the hardware functions with the demo script:
 
 ```shell
 cd Whisplay/example
-sudo bash run_test.sh
+pip install -r requirements.txt --break-system-packages
+bash run_test.sh
 ```
 
 ### Whisplay Daemon Service

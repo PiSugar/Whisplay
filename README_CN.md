@@ -172,7 +172,8 @@ tail -f ~/.whisplay-daemon/daemon-app.log
   * **使用方法**:
     ```shell
     cd example
-    sudo bash run_test.sh
+    pip install -r requirements.txt --break-system-packages
+    bash run_test.sh
     ```
     **效果**: 程序会先显示 logo 倒计时，再逐步展示每一项测试内容，并在最后显示简洁汇总结果。
 
