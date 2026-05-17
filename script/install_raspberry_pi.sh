@@ -8,8 +8,8 @@
 # - Patches upstream wm8960-soundcard script so alsactl restore can’t fail the service
 # - Optional: post-run power/brownout warning (non-fatal)
 #
-# Drop this next to WM8960-Audio-HAT.zip and run:
-#   sudo bash install_wm8960_drive.sh
+# Keep `audio/WM8960-Audio-HAT.zip` in this repo and run:
+#   sudo bash script/install_raspberry_pi.sh
 #
 
 set -Eeuo pipefail
@@ -17,7 +17,9 @@ set -Eeuo pipefail
 # ----------------------------
 # Config
 # ----------------------------
-ZIP_NAME="WM8960-Audio-HAT.zip"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ZIP_NAME="${PROJECT_ROOT}/audio/WM8960-Audio-HAT.zip"
 WORKDIR_NAME="WM8960-Audio-HAT"
 
 BOOT_CONFIG="/boot/firmware/config.txt"
@@ -207,7 +209,7 @@ have_cmd dpkg    || die "dpkg not found."
 [[ -e "$BOOT_CONFIG" ]] || die "Expected boot config not found at: $BOOT_CONFIG"
 [[ -w "$BOOT_CONFIG" ]] || die "Boot config is not writable: $BOOT_CONFIG"
 
-[[ -f "$ZIP_NAME" ]] || die "Missing $ZIP_NAME in current directory: $(pwd)"
+[[ -f "$ZIP_NAME" ]] || die "Missing $ZIP_NAME"
 
 missing=()
 for p in "${REQUIRED_PKGS[@]}"; do

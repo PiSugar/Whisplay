@@ -1,0 +1,13 @@
+{
+  "app_id": "whisplay-run-test",
+  "display_name": "Run Test",
+  "icon": "T",
+  "launch_command": "bash run_test.sh",
+  "cwd": "__EXAMPLE_DIR__",
+  "env": {
+    "WHISPLAY_APP_ID": "whisplay-run-test"
+  },
+  "exit_gesture": "quad_click",
+  "priority": 10,
+  "use_daemon_default_log": true
+}

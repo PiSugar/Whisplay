@@ -16,7 +16,7 @@ fi
 is_Radxa=$(cat /proc/device-tree/model 2>/dev/null | tr -d '\0' | grep -i "Radxa" || true)
 if [ -z "${is_Radxa}" ]; then
   echo "Error: This script is only for Radxa platform"
-  echo "For Raspberry Pi, use install_wm8960_drive.sh"
+  echo "For Raspberry Pi, use script/install_raspberry_pi.sh"
   exit 1
 fi
 
@@ -28,6 +28,7 @@ echo "Detected platform: $(cat /proc/device-tree/model 2>/dev/null | tr -d '\0')
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DTBO_DIR="/boot/dtbo"
 
 # ==================== 1. Install System Dependencies ====================
@@ -101,7 +102,7 @@ fi
 
 # Compile WM8960 device tree overlay
 echo "  Compiling WM8960 device tree overlay..."
-WM8960_DTS="${SCRIPT_DIR}/wm8960-radxa-zero3.dts"
+WM8960_DTS="${PROJECT_ROOT}/audio/wm8960-radxa-zero3.dts"
 
 if [ -f "${WM8960_DTS}" ]; then
     WM8960_DTBO="${DTBO_DIR}/wm8960-radxa-zero3.dtbo"

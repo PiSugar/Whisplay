@@ -1,0 +1,13 @@
+{
+  "app_id": "whisplay-flappy-bird",
+  "display_name": "Flappy Bird",
+  "icon": "F",
+  "launch_command": "python3 flappy_bird.py",
+  "cwd": "__EXAMPLE_DIR__",
+  "env": {
+    "WHISPLAY_APP_ID": "whisplay-flappy-bird"
+  },
+  "exit_gesture": "long_press",
+  "priority": 20,
+  "use_daemon_default_log": true
+}
