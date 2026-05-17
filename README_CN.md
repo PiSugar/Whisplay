@@ -52,6 +52,15 @@ sudo bash run_test.sh
 - `Bluetooth`：进入内部页面后可扫描附近蓝牙设备，并对选中设备执行绑定/解绑
 - `WiFi`：进入内部页面后可扫描附近 Wi‑Fi，选择网络并连接；加密网络会进入单按键屏上键盘输入密码
 
+<p align="center">
+  <img src="daemon/img/screenshots/whisplay_desktop.png" width="180" alt="Daemon 桌面" />
+  &nbsp;&nbsp;
+  <img src="daemon/img/screenshots/whisplay_bluetooth.png" width="180" alt="蓝牙页面" />
+  &nbsp;&nbsp;
+  <img src="daemon/img/screenshots/whisplay_wifi.png" width="180" alt="WiFi 页面" />
+</p>
+<p align="center"><em>左：桌面 App 列表 &nbsp;|&nbsp; 中：蓝牙管理 &nbsp;|&nbsp; 右：WiFi 连接</em></p>
+
 如果你使用了 daemon，建议其他 app 不要直接访问硬件，而是通过注册到 daemon 来获取前台控制权和共享 framebuffer 访问。
 
 安装并启动命令：

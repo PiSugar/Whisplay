@@ -52,6 +52,15 @@ The daemon now also ships with two built-in system entries:
 - `Bluetooth`: opens an internal page that scans nearby Bluetooth devices and lets you bind or unbind the selected device
 - `WiFi`: opens an internal page that scans nearby Wi-Fi networks and lets you connect; protected networks use an on-device single-button keyboard for password entry
 
+<p align="center">
+  <img src="daemon/img/screenshots/whisplay_desktop.png" width="180" alt="Daemon Desktop" />
+  &nbsp;&nbsp;
+  <img src="daemon/img/screenshots/whisplay_bluetooth.png" width="180" alt="Bluetooth Page" />
+  &nbsp;&nbsp;
+  <img src="daemon/img/screenshots/whisplay_wifi.png" width="180" alt="WiFi Page" />
+</p>
+<p align="center"><em>Left: Desktop app launcher &nbsp;|&nbsp; Middle: Bluetooth manager &nbsp;|&nbsp; Right: WiFi connection</em></p>
+
 If you are using the daemon, other apps is not recommended to directly access the hardware, and should instead register with the daemon to get foreground control and shared framebuffer access.
 
 Install and start it with:
