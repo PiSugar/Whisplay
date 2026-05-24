@@ -47,10 +47,11 @@ sudo bash run_test.sh
 
 `whisplay-daemon` is an optional local service that centrally manages LCD, backlight, RGB LED, button events, and app foreground switching. (Single click to switch app, long press to launch/foreground app, and 4 rapid clicks to request exit from foreground app)
 
-The daemon now also ships with two built-in system entries:
+The daemon now also ships with three built-in system entries:
 
 - `Bluetooth`: opens an internal page that scans nearby Bluetooth devices and lets you bind or unbind the selected device
 - `WiFi`: opens an internal page that scans nearby Wi-Fi networks and lets you connect; protected networks enter a single-button password page, and actual password input depends on an attached external keyboard
+- `Volume`: opens an internal page for speaker volume adjustment
 
 <p align="center">
   <img src="daemon/img/screenshots/whisplay_desktop.png" width="180" alt="Daemon Desktop" />
@@ -122,7 +123,7 @@ The repo root is organized by responsibility:
   * **Default socket path**: `/tmp/whisplay-daemon.sock`
   * **Commands**: `health.ping`, `app.register`, `app.list`, `app.launch`, `app.focus.acquire`, `app.focus.release`, `app.exit.request`, `framebuffer.acquire`, `backlight.set`, `led.set`, `led.fade`, `button.get_state`, `events.subscribe`
   * **Desktop behavior**: single click cycles registered apps, long press launches/foregrounds the selected app, and 4 rapid clicks request exit from the foreground app
-  * **Built-in system pages**: includes `Bluetooth` and `WiFi` entries rendered by the daemon itself, without spawning an external app process
+  * **Built-in system pages**: includes `Bluetooth`, `WiFi`, and `Volume` entries rendered by the daemon itself, without spawning an external app process
   * **Wi-Fi password input**: selecting a protected network enters a single-button password page; password entry depends on an attached external keyboard (arrow keys / Enter / Backspace / ESC)
   * **PiSugar home integration**: if `pisugar-server` is running, daemon can automatically bind the PiSugar `single`, `double`, or `long` button gesture as a return-to-home trigger according to `~/.whisplay-daemon/settings.json`; set `pisugar_home_button` to `none` to disable it
   * **Install as service**:
@@ -237,6 +238,7 @@ The `example` directory contains 4 end-user demo programs. If you are using whis
 |---------|--------|-------------|
 | [whisplay-ai-chatbot](https://github.com/PiSugar/whisplay-ai-chatbot) | PiSugar | AI chatbot using Whisplay HAT as display and voice control interface |
 | [whisplay-xiaozhi](https://github.com/PiSugar/whisplay-xiaozhi) | PiSugar | XiaoZhi chatbot client implementation for Raspberry Pi with Whisplay HAT |
+| [whisplay-talk](https://github.com/PiSugar/whisplay-talk) | PiSugar | Voice interaction project based on Whisplay HAT |
 | [whisplay-lumon-mdr-ui](https://github.com/PiSugar/whisplay-lumon-mdr-ui) | PiSugar | Tiny Lumon MDR device implementation |
 | [pizero-openclaw](https://github.com/sebastianvkl/pizero-openclaw) | Sebastianvkl | Openclaw project with Whisplay HAT display and voice control |
 | [pisugar-wx](https://github.com/hemna/pisugar-wx) | Hemna | Weather information display on Whisplay HAT |
