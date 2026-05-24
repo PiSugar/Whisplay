@@ -40,7 +40,8 @@ Test the hardware functions with the demo script:
 
 ```shell
 cd Whisplay/example
-sudo bash run_test.sh
+pip install -r requirements.txt --break-system-packages
+bash run_test.sh
 ```
 
 ### Whisplay Daemon Service
@@ -124,7 +125,7 @@ The repo root is organized by responsibility:
   * **Commands**: `health.ping`, `app.register`, `app.list`, `app.launch`, `app.focus.acquire`, `app.focus.release`, `app.exit.request`, `framebuffer.acquire`, `backlight.set`, `led.set`, `led.fade`, `button.get_state`, `events.subscribe`
   * **Desktop behavior**: single click cycles registered apps, long press launches/foregrounds the selected app, and 4 rapid clicks request exit from the foreground app
   * **Built-in system pages**: includes `Bluetooth`, `WiFi`, and `Volume` entries rendered by the daemon itself, without spawning an external app process
-  * **Wi-Fi password input**: selecting a protected network enters a single-button password page; password entry depends on an attached external keyboard (arrow keys / Enter / Backspace / ESC)
+  * **Wi-Fi password input**: selecting a protected network enters a password input page; password entry depends on an attached external keyboard (arrow keys / Enter / Backspace / ESC)
   * **PiSugar home integration**: if `pisugar-server` is running, daemon can automatically bind the PiSugar `single`, `double`, or `long` button gesture as a return-to-home trigger according to `~/.whisplay-daemon/settings.json`; set `pisugar_home_button` to `none` to disable it
   * **Install as service**:
     ```shell

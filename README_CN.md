@@ -50,7 +50,7 @@ sudo bash run_test.sh
 当前 daemon 还内置了三个系统入口：
 
 - `Bluetooth`：进入内部页面后可扫描附近蓝牙设备，并对选中设备执行绑定/解绑
-- `WiFi`：进入内部页面后可扫描附近 Wi‑Fi，选择网络并连接；加密网络会进入单按键密码页，密码输入依赖设备接入的外接键盘
+- `WiFi`：进入内部页面后可扫描附近 Wi‑Fi，选择网络并连接；加密网络会进入密码输入页，密码输入依赖设备接入的外接键盘
 - `Volume`：进入内部页面后可调节扬声器音量
 
 <p align="center">
@@ -173,7 +173,8 @@ tail -f ~/.whisplay-daemon/daemon-app.log
   * **使用方法**:
     ```shell
     cd example
-    sudo bash run_test.sh
+    pip install -r requirements.txt --break-system-packages
+    bash run_test.sh
     ```
     **效果**: 程序会先显示 logo 倒计时，再逐步展示每一项测试内容，并在最后显示简洁汇总结果。
 
