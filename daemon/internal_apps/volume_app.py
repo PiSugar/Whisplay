@@ -130,12 +130,20 @@ class VolumeInternalApp:
     def _find_wm8960_card(self) -> str:
         try:
             with open("/proc/asound/cards", "r", encoding="utf-8") as fp:
+                fallback = ""
                 for raw_line in fp:
                     line = raw_line.strip()
-                    if "wm8960" in line.lower():
+                    lower = line.lower()
+                    if "whisplaysound" in lower:
                         parts = line.split()
                         if parts:
                             return parts[0]
+                    if not fallback and ("wm8960" in lower or "es8389" in lower):
+                        parts = line.split()
+                        if parts:
+                            fallback = parts[0]
+                if fallback:
+                    return fallback
         except Exception:
             return ""
         return ""
@@ -143,7 +151,22 @@ class VolumeInternalApp:
     def _detect_volume_control(self) -> tuple[str, str, int]:
         card = self._find_wm8960_card()
         if not card:
-            raise RuntimeError("wm8960 sound card not found")
+            raise RuntimeError("Whisplay sound card not found")
+        raw_controls_result = self._run_command(["amixer", "-c", card, "controls"], timeout=5.0)
+        if raw_controls_result.returncode == 0 and "name='speaker'" in (raw_controls_result.stdout or ""):
+            control_name = "name=speaker"
+            result = self._run_command(["amixer", "-c", card, "cget", control_name], timeout=5.0)
+            if result.returncode != 0:
+                raise RuntimeError((result.stderr or result.stdout or "amixer cget failed").strip())
+            max_value = 100
+            unified_limits = re.search(r"min=0,\s*max=(\d+)", result.stdout or "")
+            if unified_limits:
+                try:
+                    max_value = int(unified_limits.group(1))
+                except ValueError:
+                    max_value = 100
+            return card, control_name, max(1, max_value)
+
         controls_result = self._run_command(["amixer", "-c", card, "scontrols"], timeout=5.0)
         if controls_result.returncode != 0:
             raise RuntimeError((controls_result.stderr or controls_result.stdout or "amixer scontrols failed").strip())
@@ -172,10 +195,14 @@ class VolumeInternalApp:
         return card, control_name, max(1, max_value)
 
     def _read_current_value(self, card: str, control_name: str) -> int:
-        result = self._run_command(["amixer", "-c", card, "get", control_name], timeout=5.0)
+        command = ["amixer", "-c", card, "cget", control_name] if control_name.startswith("name=") else ["amixer", "-c", card, "get", control_name]
+        result = self._run_command(command, timeout=5.0)
         if result.returncode != 0:
-            raise RuntimeError((result.stderr or result.stdout or "amixer get failed").strip())
+            raise RuntimeError((result.stderr or result.stdout or "amixer read failed").strip())
         output = result.stdout or ""
+        match = re.search(r":\s*values=(\d+)", output)
+        if match:
+            return int(match.group(1))
         match = re.search(r"Playback\s+(\d+)\s+\[(\d+)%\]", output)
         if match:
             return int(match.group(1))
@@ -220,6 +247,9 @@ class VolumeInternalApp:
         normalized = max(0.0, min(127.0, 127.0 * value / float(max_value)))
         return max(0, min(100, self._base_value_to_curve_percent(normalized)))
 
+    def _is_unified_control(self, control_name: str) -> bool:
+        return control_name.startswith("name=")
+
     def _nearest_option(self, percent: int) -> int:
         return min(self.OPTIONS, key=lambda candidate: (abs(candidate - percent), -candidate))
 
@@ -257,7 +287,10 @@ class VolumeInternalApp:
         self._mark_dirty()
         card, control_name, max_value = self._detect_volume_control()
         current_value = self._read_current_value(card, control_name)
-        current_percent = self._device_value_to_curve_percent(current_value, max_value)
+        if self._is_unified_control(control_name):
+            current_percent = max(0, min(100, current_value))
+        else:
+            current_percent = self._device_value_to_curve_percent(current_value, max_value)
         with self._lock:
             self.state.card = card
             self.state.control_name = control_name
@@ -272,10 +305,14 @@ class VolumeInternalApp:
 
     def _set_volume_percent(self, percent: int):
         card, control_name, max_value = self._detect_volume_control()
-        target_value = self._curve_percent_to_device_value(percent, max_value)
-        result = self._run_command(["amixer", "-c", card, "set", control_name, str(target_value)], timeout=8.0)
+        if self._is_unified_control(control_name):
+            target_value = max(0, min(max_value, percent))
+        else:
+            target_value = self._curve_percent_to_device_value(percent, max_value)
+        command = ["amixer", "-c", card, "cset", control_name, str(target_value)] if control_name.startswith("name=") else ["amixer", "-c", card, "set", control_name, str(target_value)]
+        result = self._run_command(command, timeout=8.0)
         if result.returncode != 0:
-            raise RuntimeError((result.stderr or result.stdout or "amixer set failed").strip())
+            raise RuntimeError((result.stderr or result.stdout or "amixer write failed").strip())
         self._refresh()
         self._play_preview()
         with self._lock:
@@ -283,4 +320,3 @@ class VolumeInternalApp:
             self.state.busy = False
             self.state.last_refresh_at = time.time()
         self._mark_dirty()
-

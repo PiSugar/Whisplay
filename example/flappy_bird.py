@@ -150,9 +150,14 @@ def rgb565_bytes(color):
 def find_wm8960_card() -> str | None:
     try:
         with open("/proc/asound/cards", "r", encoding="utf-8") as handle:
+            fallback = None
             for line in handle:
-                if "wm8960" in line.lower():
+                lower = line.lower()
+                if "whisplaysound" in lower:
                     return line.split()[0]
+                if fallback is None and ("wm8960" in lower or "es8389" in lower):
+                    fallback = line.split()[0]
+            return fallback
     except Exception:
         return None
     return None
@@ -163,6 +168,7 @@ def setup_audio_mixer():
     if card is None:
         return
     commands = [
+        ["amixer", "-c", card, "cset", "name=speaker", "80"],
         ["amixer", "-c", card, "sset", "Left Output Mixer PCM", "on"],
         ["amixer", "-c", card, "sset", "Right Output Mixer PCM", "on"],
         ["amixer", "-c", card, "sset", "Speaker", "121"],

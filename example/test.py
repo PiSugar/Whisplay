@@ -121,15 +121,25 @@ class RunTestFlow:
     def _find_wm8960_card(self) -> int:
         try:
             with open("/proc/asound/cards", "r", encoding="utf-8") as fp:
+                fallback = None
                 for line in fp:
-                    if "wm8960" in line.lower():
+                    lower = line.lower()
+                    if "whisplaysound" in lower:
                         return int(line.strip().split()[0])
+                    if fallback is None and ("wm8960" in lower or "es8389" in lower):
+                        fallback = int(line.strip().split()[0])
+                if fallback is not None:
+                    return fallback
         except Exception:
             pass
         return 1
 
     def _setup_mixer(self):
         card = str(self.card_index)
+        unified_commands = [
+            ["amixer", "-c", card, "cset", "name=speaker", "80"],
+            ["amixer", "-c", card, "cset", "name=mic", "50"],
+        ]
         commands = [
             ["amixer", "-c", card, "sset", "Left Output Mixer PCM", "on"],
             ["amixer", "-c", card, "sset", "Right Output Mixer PCM", "on"],
@@ -142,7 +152,7 @@ class RunTestFlow:
             ["amixer", "-c", card, "sset", "Left Input Boost Mixer LINPUT1", "2"],
             ["amixer", "-c", card, "sset", "Right Input Boost Mixer RINPUT1", "2"],
         ]
-        for command in commands:
+        for command in unified_commands + commands:
             try:
                 subprocess.run(command, check=False, capture_output=True, timeout=5)
             except Exception:
@@ -881,7 +891,7 @@ def main():
         "--card",
         type=int,
         default=None,
-        help="WM8960 sound card number, defaults to auto-detect",
+        help="Whisplay sound card number, defaults to auto-detect",
     )
     args = parser.parse_args()
     RunTestFlow(card_index=args.card).run()
