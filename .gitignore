@@ -120,6 +120,26 @@ ipython_config.py
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
 __pypackages__/
 
+# Bundled Whisplay sound card driver build artifacts
+audio/whisplay-soundcard/src/*.ko
+audio/whisplay-soundcard/src/*.o
+audio/whisplay-soundcard/src/*.mod
+audio/whisplay-soundcard/src/*.mod.c
+audio/whisplay-soundcard/src/*.order
+audio/whisplay-soundcard/src/*.symvers
+audio/whisplay-soundcard/src/.*.cmd
+audio/whisplay-soundcard/src/.tmp_versions/
+audio/whisplay-soundcard/src/Module.symvers
+audio/whisplay-soundcard/src/modules.order
+audio/whisplay-soundcard/src/dts/*.dtbo
+audio/whisplay-soundcard/**/*.wav
+audio/whisplay-soundcard/**/*.raw
+audio/whisplay-soundcard/**/*.pcm
+audio/whisplay-soundcard/**/*.flac
+audio/whisplay-soundcard/**/calib_results/
+audio/whisplay-soundcard/**/test_results/
+audio/whisplay-soundcard/**/logs/
+
 # Celery stuff
 celerybeat-schedule
 celerybeat.pid

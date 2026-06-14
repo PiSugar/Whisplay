@@ -2,8 +2,8 @@
 #
 # Install the Whisplay unified sound card driver on Raspberry Pi.
 #
-# The driver lives in the sibling whisplay-soundcard project and exposes one
-# ALSA card name, `whisplaysound`, for both WM8960 and ES8389 hardware.
+# The driver bundled in this repo exposes one ALSA card name, `whisplaysound`,
+# for both WM8960 and ES8389 hardware.
 #
 # Usage:
 #   sudo bash script/install_raspberry_pi.sh
@@ -14,7 +14,7 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SOUNDCARD_DIR="${WHISPLAY_SOUNDCARD_DIR:-$(cd "$PROJECT_ROOT/../whisplay-soundcard" 2>/dev/null && pwd || true)}"
+SOUNDCARD_DIR="${WHISPLAY_SOUNDCARD_DIR:-$PROJECT_ROOT/audio/whisplay-soundcard}"
 
 log()  { echo "[*] $*"; }
 ok()   { echo "[+] $*"; }
@@ -62,7 +62,6 @@ power_warning() {
 need_root
 is_pi || die "This installer only supports Raspberry Pi."
 
-[[ -n "$SOUNDCARD_DIR" ]] || die "Could not locate whisplay-soundcard. Set WHISPLAY_SOUNDCARD_DIR=/path/to/whisplay-soundcard."
 [[ -x "$SOUNDCARD_DIR/scripts/install.sh" || -f "$SOUNDCARD_DIR/scripts/install.sh" ]] || \
   die "Missing unified driver installer: $SOUNDCARD_DIR/scripts/install.sh"
 
