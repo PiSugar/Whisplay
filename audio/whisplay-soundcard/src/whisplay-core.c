@@ -82,7 +82,7 @@ static void whisplay_boot_work_fn(struct work_struct *work)
 #define WHISPLAY_GAIN_MIN 0
 #define WHISPLAY_GAIN_MAX (WHISPLAY_LUT_SIZE - 1)
 #define WHISPLAY_PLAYBACK_GAIN_DEFAULT 80
-#define WHISPLAY_CAPTURE_GAIN_DEFAULT 50
+#define WHISPLAY_CAPTURE_GAIN_DEFAULT 80
 #define WHISPLAY_CARD_ID "whisplaysound"
 #define WHISPLAY_CARD_DISPLAY_NAME "Whisplay Sound"
 #define WHISPLAY_SPEAKER_CTL "speaker"
