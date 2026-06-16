@@ -136,6 +136,8 @@ tail -f ~/.whisplay-daemon/daemon-app.log
 
   * **来源**: 音频驱动支持由 Waveshare（Raspberry Pi）提供，或使用自定义 overlay（Radxa）。
 
+  * **旧版驱动**: 旧版驱动位于 `support/wm8960` 分支。如有需要，可以先检出该分支再进行安装。
+
   * **安装**:
     - **自动识别**: 运行 `install_driver.sh`
     - **Raspberry Pi**: 运行 `script/install_raspberry_pi.sh`
