@@ -137,6 +137,8 @@ The repo root is organized by responsibility:
 
   * **Source**: Raspberry Pi uses the bundled unified Whisplay sound card driver in `audio/whisplay-soundcard/`. Radxa uses the custom overlays in `audio/`.
 
+  * **Legacy driver**: Older driver support is kept on the `support/wm8960` branch. If you need the legacy driver, check out that branch before installing.
+
   * **Installation**:
     - **Auto-detect**: Run `install_driver.sh`
     - **Raspberry Pi**: Run `script/install_raspberry_pi.sh`
