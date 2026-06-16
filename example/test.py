@@ -45,7 +45,11 @@ class RunTestFlow:
         )
         self.board.set_backlight(70)
 
-        self.card_index = card_index or self._find_wm8960_card()
+        if card_index is None:
+            self.card_index, self.card_name = self._find_whisplay_card()
+        else:
+            self.card_index = card_index
+            self.card_name = self._find_card_name_for_index(card_index)
         self.lock = threading.RLock()
         self.running = True
         self.phase = "intro"
@@ -118,18 +122,61 @@ class RunTestFlow:
                 continue
         return ImageFont.load_default()
 
-    def _find_wm8960_card(self) -> int:
+    def _find_whisplay_card(self) -> tuple[int, str]:
         try:
             with open("/proc/asound/cards", "r", encoding="utf-8") as fp:
+                fallback = None
                 for line in fp:
-                    if "wm8960" in line.lower():
-                        return int(line.strip().split()[0])
+                    lower = line.lower()
+                    parts = line.strip().split()
+                    if not parts:
+                        continue
+                    card_index = int(parts[0])
+                    card_name = parts[1].strip("[]:") if len(parts) > 1 else str(card_index)
+                    if "whisplaysound" in lower:
+                        return card_index, card_name
+                    if fallback is None and ("wm8960" in lower or "es8389" in lower):
+                        fallback = (card_index, card_name)
+                if fallback is not None:
+                    return fallback
         except Exception:
             pass
-        return 1
+        return 1, "1"
+
+    def _find_wm8960_card(self) -> int:
+        card_index, _card_name = self._find_whisplay_card()
+        return card_index
+
+    def _find_card_name_for_index(self, card_index: int) -> str:
+        try:
+            with open("/proc/asound/cards", "r", encoding="utf-8") as fp:
+                prefix = str(card_index)
+                for line in fp:
+                    parts = line.strip().split()
+                    if parts and parts[0] == prefix and len(parts) > 1:
+                        return parts[1].strip("[]:")
+        except Exception:
+            pass
+        return str(card_index)
+
+    def _alsa_playback_devices(self) -> list[str]:
+        if self.card_name == "whisplaysound":
+            return ["whisplaysound", "default"]
+        devices = []
+        if self.card_name and not self.card_name.isdigit():
+            devices.append(f"plughw:CARD={self.card_name}")
+        devices.append(f"plughw:{self.card_index}")
+        return devices
+
+    def _alsa_capture_device(self) -> str:
+        return self._alsa_playback_devices()[0]
 
     def _setup_mixer(self):
         card = str(self.card_index)
+        unified_commands = [
+            ["amixer", "-c", card, "cset", "name=speaker", "80"],
+            ["amixer", "-c", card, "cset", "name=mic", "50"],
+        ]
         commands = [
             ["amixer", "-c", card, "sset", "Left Output Mixer PCM", "on"],
             ["amixer", "-c", card, "sset", "Right Output Mixer PCM", "on"],
@@ -142,7 +189,7 @@ class RunTestFlow:
             ["amixer", "-c", card, "sset", "Left Input Boost Mixer LINPUT1", "2"],
             ["amixer", "-c", card, "sset", "Right Input Boost Mixer RINPUT1", "2"],
         ]
-        for command in commands:
+        for command in unified_commands + commands:
             try:
                 subprocess.run(command, check=False, capture_output=True, timeout=5)
             except Exception:
@@ -426,11 +473,7 @@ class RunTestFlow:
         return self.running
 
     def _play_wav(self, path: str) -> bool:
-        devices = [
-            f"hw:{self.card_index},0",
-            f"plughw:{self.card_index},0",
-        ]
-        for device in devices:
+        for device in self._alsa_playback_devices():
             try:
                 proc = subprocess.Popen(
                     ["aplay", "-D", device, path],
@@ -494,13 +537,13 @@ class RunTestFlow:
         self._record_thread.start()
 
     def _record_worker(self):
-        hw_device = f"hw:{self.card_index},0"
+        capture_device = self._alsa_capture_device()
         try:
             self._record_proc = subprocess.Popen(
                 [
                     "arecord",
                     "-D",
-                    hw_device,
+                    capture_device,
                     "-f",
                     "S16_LE",
                     "-r",
@@ -881,7 +924,7 @@ def main():
         "--card",
         type=int,
         default=None,
-        help="WM8960 sound card number, defaults to auto-detect",
+        help="Whisplay sound card number, defaults to auto-detect",
     )
     args = parser.parse_args()
     RunTestFlow(card_index=args.card).run()

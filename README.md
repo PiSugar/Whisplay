@@ -105,7 +105,7 @@ The repo root is organized by responsibility:
 - `install_driver.sh`: auto-detecting driver installer
 - `script/`: platform install scripts
 - `daemon/`: local hardware daemon, its service installer, and `default_apps/`
-- `audio/`: audio install assets and DTS overlays
+- `audio/`: audio install assets, DTS overlays, and the bundled unified Raspberry Pi sound card driver
 - `example/`: end-user demos
 
 #### 1. `runtime/whisplay.py`
@@ -133,9 +133,9 @@ The repo root is organized by responsibility:
     ```
   * **Install result**: the installer writes `~/.whisplay-daemon/settings.json` and seeds the default example app JSON files into `~/.whisplay-daemon/app/`
 
-#### 2. WM8960 Audio Driver
+#### 2. Unified Audio Driver
 
-  * **Source**: Audio driver support is provided by Waveshare (Raspberry Pi) or custom overlay (Radxa).
+  * **Source**: Raspberry Pi uses the bundled unified Whisplay sound card driver in `audio/whisplay-soundcard/`. Radxa uses the custom overlays in `audio/`.
 
   * **Legacy driver**: Older driver support is kept on the `support/wm8960` branch. If you need the legacy driver, check out that branch before installing.
 
@@ -155,7 +155,11 @@ The repo root is organized by responsibility:
     sudo bash script/install_radxa_cubie_a7z.sh
     ```
 
-#### 3. Device Tree Overlays (Radxa only)
+#### 3. Bundled Raspberry Pi Sound Card Driver
+
+  * `audio/whisplay-soundcard/` - unified Raspberry Pi driver source, install scripts, and ALSA config. `script/install_raspberry_pi.sh` builds and installs it directly from this repository.
+
+#### 4. Device Tree Overlays (Radxa only)
 
   * `audio/wm8960-radxa-zero3.dts` - DT overlay for WM8960 codec on Radxa ZERO 3W (RK3566), configuring I2C3 and I2S3.
   * `audio/wm8960-cubie-a7z.dts` - DT overlay for WM8960 codec on Radxa Cubie A7Z (Allwinner A733), configuring TWI7 and I2S0.
