@@ -129,7 +129,7 @@ class RunTestFlow:
                 for line in fp:
                     lower = line.lower()
                     parts = line.strip().split()
-                    if not parts:
+                    if not parts or not parts[0].isdigit():
                         continue
                     card_index = int(parts[0])
                     card_name = parts[1].strip("[]:") if len(parts) > 1 else str(card_index)
@@ -143,17 +143,13 @@ class RunTestFlow:
             pass
         return 1, "1"
 
-    def _find_wm8960_card(self) -> int:
-        card_index, _card_name = self._find_whisplay_card()
-        return card_index
-
     def _find_card_name_for_index(self, card_index: int) -> str:
         try:
             with open("/proc/asound/cards", "r", encoding="utf-8") as fp:
                 prefix = str(card_index)
                 for line in fp:
                     parts = line.strip().split()
-                    if parts and parts[0] == prefix and len(parts) > 1:
+                    if parts and parts[0].isdigit() and parts[0] == prefix and len(parts) > 1:
                         return parts[1].strip("[]:")
         except Exception:
             pass
@@ -795,7 +791,7 @@ class RunTestFlow:
                     "Current test:",
                     "Sample audio failed to play.",
                     "",
-                    "Check WM8960 audio",
+                    "Check Whisplay audio",
                     "and try again.",
                 ],
                 accent=(255, 80, 80),
@@ -893,7 +889,7 @@ class RunTestFlow:
         print("=" * 52)
         print(" Whisplay Run Test")
         print("=" * 52)
-        print(f"Using WM8960 card: {self.card_index}")
+        print(f"Using Whisplay audio card: {self.card_name} (index {self.card_index})")
         print("Flow: display -> LED -> speaker -> button -> mic")
         print("Mic test: hold to record, release to play back")
         print("=" * 52)
