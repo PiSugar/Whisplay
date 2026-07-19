@@ -85,6 +85,10 @@ Example daemon settings:
 
 `pisugar_home_button` controls which PiSugar button gesture returns from the foreground app back to daemon home. Supported values are `single`, `double`, `long`, and `none`. The default is `single`.
 
+Foreground apps may register `exit_gesture` as `quad_click`, `long_press`, or
+`none`. With `none`, the daemon does not reserve a Whisplay button gesture for
+exit; the app must provide another Home action, such as the PiSugar button.
+
 To inspect daemon logs:
 
 ```shell
@@ -123,7 +127,7 @@ The repo root is organized by responsibility:
   * **Protocol**: line-delimited JSON with `version: 1`
   * **Default socket path**: `/tmp/whisplay-daemon.sock`
   * **Commands**: `health.ping`, `app.register`, `app.list`, `app.launch`, `app.focus.acquire`, `app.focus.release`, `app.exit.request`, `framebuffer.acquire`, `backlight.set`, `led.set`, `led.fade`, `button.get_state`, `events.subscribe`
-  * **Desktop behavior**: single click cycles registered apps, long press launches/foregrounds the selected app, and 4 rapid clicks request exit from the foreground app
+  * **Desktop behavior**: single click cycles registered apps, long press launches/foregrounds the selected app, and 4 rapid clicks request exit from the foreground app unless it registered `exit_gesture: "none"`
   * **Built-in system pages**: includes `Bluetooth`, `WiFi`, and `Volume` entries rendered by the daemon itself, without spawning an external app process
   * **Wi-Fi password input**: selecting a protected network enters a password input page; password entry depends on an attached external keyboard (arrow keys / Enter / Backspace / ESC)
   * **PiSugar home integration**: if `pisugar-server` is running, daemon can automatically bind the PiSugar `single`, `double`, or `long` button gesture as a return-to-home trigger according to `~/.whisplay-daemon/settings.json`; set `pisugar_home_button` to `none` to disable it

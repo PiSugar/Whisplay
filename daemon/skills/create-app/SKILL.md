@@ -116,7 +116,7 @@ Or use `persist=True` in `create_whisplay_hardware()` to auto-register on first 
 | `launch_command` | string | Shell command to start the app |
 | `cwd` | string | Working directory for launch |
 | `env` | object | Extra environment variables |
-| `exit_gesture` | string | `"quad_click"` (4 clicks in 3s) or `"long_press"` (0.7s hold) |
+| `exit_gesture` | string | `"quad_click"` (4 clicks in 3s), `"long_press"` (0.7s hold), or `"none"` (app owns all gestures) |
 | `priority` | int | Desktop sort order (higher = top) |
 | `use_daemon_default_log` | bool | Redirect stdout to daemon log |
 | `persist` | bool | Save config to disk |

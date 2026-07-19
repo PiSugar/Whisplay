@@ -106,7 +106,9 @@ Notes:
 - `app_id` must be stable and unique.
 - `launch_command` is what the daemon uses when the user launches the app from desktop.
 - `persist: true` stores the app as a JSON file in `~/.whisplay-daemon/app/` for future boots.
-- `exit_gesture` is optional. Valid values are `quad_click` and `long_press`. Default is `quad_click`.
+- `exit_gesture` is optional. Valid values are `quad_click`, `long_press`, and
+  `none`. Use `none` when the foreground app owns all button gestures and
+  provides another way to return Home. Default is `quad_click`.
 - `priority` is optional. Higher values appear earlier on the desktop. Default is `0`.
 - `use_daemon_default_log` is optional. When `true`, the app's stdout/stderr are appended to `~/.whisplay-daemon/daemon-app.log`.
 - `disable_esc_exit_key` is optional. Default is `false`. When set to `true`, pressing external keyboard `Esc` in foreground will not trigger return-to-home for that app.

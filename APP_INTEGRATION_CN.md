@@ -106,7 +106,9 @@ Payload：
 - `app_id` 必须稳定且唯一
 - `launch_command` 是桌面启动该 app 时 daemon 实际执行的命令
 - `persist: true` 会将该 app 以单独 JSON 文件形式持久化保存到 `~/.whisplay-daemon/app/`
-- `exit_gesture` 是可选项，可取 `quad_click` 或 `long_press`，默认值为 `quad_click`
+- `exit_gesture` 是可选项，可取 `quad_click`、`long_press` 或 `none`。当前台
+  app 需要使用按钮的全部手势，并提供了其他返回 Home 的方式时，可使用
+  `none`。默认值为 `quad_click`
 - `priority` 是可选项，值越大在桌面中排得越靠前，默认值为 `0`
 - `use_daemon_default_log` 是可选项。为 `true` 时，app 的 stdout/stderr 会追加写入 `~/.whisplay-daemon/daemon-app.log`
 - `disable_esc_exit_key` 是可选项，默认值为 `false`。当设置为 `true` 时，该 app 处于前台时，外接键盘 `Esc` 不会触发返回 Home
