@@ -19,6 +19,60 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 SRC="$ROOT/src"
 CFG="$ROOT/configs"
+WHISPLAY_HAT_EEPROM_DETECTED=0
+WHISPLAY_BOOT_OVERLAY_SOURCE="config.txt"
+
+dt_string() {
+    local file="$1"
+    [[ -r "$file" ]] || return 1
+    tr -d '\0' <"$file" 2>/dev/null || true
+}
+
+whisplay_hat_eeprom_present() {
+    local vendor=""
+    local product_id=""
+
+    vendor="$(dt_string /proc/device-tree/hat/vendor || true)"
+    product_id="$(dt_string /proc/device-tree/hat/product_id || true)"
+
+    [[ "${vendor,,}" == "pisugar" && "$product_id" == "0x0001" ]]
+}
+
+whisplay_soundcard_in_live_dt() {
+    local compat=""
+
+    compat="$(dt_string /proc/device-tree/sound/compatible || true)"
+    [[ "$compat" == *"pisugar,whisplay-soundcard"* ]]
+}
+
+configure_boot_overlay() {
+    local boot_cfg="$1"
+
+    if whisplay_hat_eeprom_present; then
+        WHISPLAY_HAT_EEPROM_DETECTED=1
+    fi
+
+    for param in i2c_arm=on i2s=on; do
+        if ! grep -q "^dtparam=${param}" "$boot_cfg" 2>/dev/null; then
+            echo "dtparam=${param}" >>"$boot_cfg"
+        fi
+    done
+
+    if [[ "$WHISPLAY_HAT_EEPROM_DETECTED" == "1" && "${WHISPLAY_FORCE_CONFIG_OVERLAY:-0}" != "1" ]]; then
+        sed -i '/^dtoverlay=whisplay-soundcard/d' "$boot_cfg" 2>/dev/null || true
+        WHISPLAY_BOOT_OVERLAY_SOURCE="HAT EEPROM"
+        echo "  Whisplay HAT EEPROM detected; leaving the sound-card overlay to EEPROM auto-loading."
+        if ! whisplay_soundcard_in_live_dt; then
+            echo "  WARN: The live DT has no Whisplay sound node yet; reboot after installation and re-check EEPROM overlay loading." >&2
+        fi
+        return 0
+    fi
+
+    if ! grep -q "^dtoverlay=whisplay-soundcard" "$boot_cfg" 2>/dev/null; then
+        echo "dtoverlay=whisplay-soundcard" >>"$boot_cfg"
+    fi
+    WHISPLAY_BOOT_OVERLAY_SOURCE="config.txt"
+}
 
 migrate_legacy_alsa_refs() {
     local file
@@ -76,15 +130,7 @@ install -m 644 "$SRC/dts/whisplay-soundcard.dtbo" /boot/overlays/ 2>/dev/null ||
 BOOT_CFG="/boot/firmware/config.txt"
 test -f "$BOOT_CFG" || BOOT_CFG="/boot/config.txt"
 
-for param in i2c_arm=on i2s=on; do
-    if ! grep -q "^dtparam=${param}" "$BOOT_CFG" 2>/dev/null; then
-        echo "dtparam=${param}" >>"$BOOT_CFG"
-    fi
-done
-
-if ! grep -q "^dtoverlay=whisplay-soundcard" "$BOOT_CFG" 2>/dev/null; then
-    echo "dtoverlay=whisplay-soundcard" >>"$BOOT_CFG"
-fi
+configure_boot_overlay "$BOOT_CFG"
 
 # Remove legacy Waveshare overlays that conflict with Whisplay
 sed -i '/^dtoverlay=wm8960-soundcard/d' "$BOOT_CFG" 2>/dev/null || true
@@ -146,6 +192,22 @@ echo "  Boot defaults enabled (speaker=80, mic=80)"
 echo
 echo "===================================="
 echo " Installation complete."
+echo
+if [[ "$WHISPLAY_HAT_EEPROM_DETECTED" == "1" ]]; then
+    echo " Hardware: PiSugar Whisplay HAT EEPROM detected."
+    if [[ "$WHISPLAY_BOOT_OVERLAY_SOURCE" == "HAT EEPROM" ]]; then
+        echo " Overlay: whisplay-soundcard will be auto-loaded by the HAT EEPROM."
+    else
+        echo " Overlay: whisplay-soundcard is configured in $BOOT_CFG."
+    fi
+    echo
+    echo " Note: if this OS image is later used with older Whisplay hardware"
+    echo " without EEPROM, manually add this line to $BOOT_CFG:"
+    echo "   dtoverlay=whisplay-soundcard"
+else
+    echo " Hardware: no PiSugar Whisplay HAT EEPROM detected."
+    echo " Overlay: whisplay-soundcard is configured in $BOOT_CFG."
+fi
 echo
 echo " Reboot to load the driver and overlay:"
 echo "   sudo reboot"
