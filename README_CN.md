@@ -233,10 +233,25 @@ tail -f ~/.whisplay-daemon/daemon-app.log
 
 **A7Z 安全提示：** 在 Radxa Cubie A7Z 上，请**不要点击 Whisplay HAT 的物理按键**。由于电路不兼容，点击可能导致设备立即断电。
 
-## 相关链接
+## 文档和相关项目
 
-- [PiSugar Whisplay Docs](https://docs.pisugar.com/docs/product-wiki/whisplay/intro)
+### 官方文档
+
+[PiSugar Whisplay 文档](https://docs.pisugar.com/docs/product-wiki/whisplay/intro)
+
+### 接入指南
+
 - [Third-Party App Integration Guide](APP_INTEGRATION.md)
 - [第三方 App 接入指南](APP_INTEGRATION_CN.md)
-- [whisplay-ai-chatbot](https://github.com/PiSugar/whisplay-ai-chatbot)
-- [whisplay-lumon-mdr-ui](https://github.com/PiSugar/whisplay-lumon-mdr-ui)
+
+### 相关项目
+
+| 项目 | 作者 | 说明 |
+|------|------|------|
+| [whisplay-chatgpt](https://github.com/PiSugar/whisplay-chatgpt) | PiSugar | 基于 Whisplay HAT 的 Raspberry Pi ChatGPT 语音助手 |
+| [whisplay-ai-chatbot](https://github.com/PiSugar/whisplay-ai-chatbot) | PiSugar | 使用 Whisplay HAT 作为显示和语音控制界面的 AI 聊天机器人 |
+| [whisplay-xiaozhi](https://github.com/PiSugar/whisplay-xiaozhi) | PiSugar | 基于 Raspberry Pi 和 Whisplay HAT 的小智聊天机器人客户端实现 |
+| [whisplay-talk](https://github.com/PiSugar/whisplay-talk) | PiSugar | 基于 Whisplay HAT 的语音交互项目 |
+| [whisplay-lumon-mdr-ui](https://github.com/PiSugar/whisplay-lumon-mdr-ui) | PiSugar | Tiny Lumon MDR 设备实现 |
+| [pizero-openclaw](https://github.com/sebastianvkl/pizero-openclaw) | Sebastianvkl | 使用 Whisplay HAT 显示和语音控制的 Openclaw 项目 |
+| [pisugar-wx](https://github.com/hemna/pisugar-wx) | Hemna | Whisplay HAT 天气信息显示项目 |

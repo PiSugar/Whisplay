@@ -247,6 +247,7 @@ The `example` directory contains 4 end-user demo programs. If you are using whis
 
 | Project | Author | Description |
 |---------|--------|-------------|
+| [whisplay-chatgpt](https://github.com/PiSugar/whisplay-chatgpt) | PiSugar | ChatGPT voice assistant for Raspberry Pi with Whisplay HAT |
 | [whisplay-ai-chatbot](https://github.com/PiSugar/whisplay-ai-chatbot) | PiSugar | AI chatbot using Whisplay HAT as display and voice control interface |
 | [whisplay-xiaozhi](https://github.com/PiSugar/whisplay-xiaozhi) | PiSugar | XiaoZhi chatbot client implementation for Raspberry Pi with Whisplay HAT |
 | [whisplay-talk](https://github.com/PiSugar/whisplay-talk) | PiSugar | Voice interaction project based on Whisplay HAT |
