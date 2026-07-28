@@ -99,6 +99,9 @@
 
 #define ES8389_MASTER_MODE_EN         (1 << 0)
 
+#define ES8389_HPSW_HP_SWITCH_MASK    0x03
+#define ES8389_HPSW_HP_SWITCH_ON      0x03
+
 #define ES8389_TDM_OFF                (0 << 0)
 #define ES8389_STDM_ON                (1 << 7)
 #define ES8389_PTDM_ON                (1 << 6)

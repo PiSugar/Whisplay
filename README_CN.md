@@ -104,7 +104,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
 - `install_driver.sh`：自动识别平台的驱动安装入口
 - `script/`：平台安装脚本
 - `daemon/`：本地硬件 daemon、其服务安装脚本，以及 `default_apps/`
-- `audio/`：音频安装资源、DTS overlay，以及内置的 Raspberry Pi 统一声卡驱动
+- `audio/`：音频安装资源、DTS overlay，以及内置的 Whisplay 统一声卡驱动
 - `example/`：面向用户的示例程序
 
 #### 1. `runtime/whisplay.py`
@@ -134,7 +134,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
 
 #### 2. 统一声卡驱动
 
-  * **来源**: Raspberry Pi 使用本工程内置的统一 Whisplay 声卡驱动 `audio/whisplay-soundcard/`。Radxa 使用 `audio/` 下的自定义 overlay。
+  * **来源**: Raspberry Pi 和 Radxa ZERO 3W 使用本工程内置的统一 Whisplay 声卡驱动 `audio/whisplay-soundcard/`，兼容 WM8960 和 ES8389 两种 codec 变体。Radxa Cubie A7Z 仍使用 `audio/` 下的板级 overlay。
 
   * **旧版驱动**: 旧版驱动位于 `support/wm8960` 分支。如有需要，可以先检出该分支再进行安装。
 
@@ -154,14 +154,14 @@ tail -f ~/.whisplay-daemon/daemon-app.log
     sudo bash script/install_radxa_cubie_a7z.sh
     ```
 
-#### 3. `audio/whisplay-soundcard/`（Raspberry Pi）
+#### 3. `audio/whisplay-soundcard/`（统一声卡驱动）
 
-  * **功能**: 内置统一声卡驱动源码、安装脚本和 ALSA 配置。
-  * **说明**: `script/install_raspberry_pi.sh` 会直接从本工程构建并安装该驱动，不需要用户本地另有 `whisplay-soundcard` 仓库。
+  * **功能**: 内置统一声卡驱动源码、安装脚本、ALSA 配置和平台 DTS overlay。
+  * **说明**: `script/install_raspberry_pi.sh` 和 `script/install_radxa_zero3w.sh` 会直接从本工程构建并安装该驱动，不需要用户本地另有 `whisplay-soundcard` 仓库。
 
-#### 4. `audio/wm8960-radxa-zero3.dts`（仅限 Radxa）
+#### 4. `audio/whisplay-soundcard/src/dts/whisplay-soundcard-radxa-zero3w.dts`（Radxa ZERO 3W）
 
-  * **功能**: Radxa ZERO 3W (RK3566) 上 WM8960 编解码器的设备树 overlay 源文件，配置 I2C3 和 I2S3 音频接口。
+  * **功能**: Radxa ZERO 3W (RK3566) 上统一声卡驱动的设备树 overlay 源文件，配置 WM8960、ES8389、I2C3 和 I2S3 音频接口。
   * **说明**: 此文件会由 `install_radxa_zero3w.sh` 自动编译并安装。
 
 #### 5. `audio/wm8960-cubie-a7z.dts`（仅限 Radxa）

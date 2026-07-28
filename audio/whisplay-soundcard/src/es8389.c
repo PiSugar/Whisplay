@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * ES8388/ES8389 codec backend for Whisplay unified sound card.
+ * ES8389 codec backend for Whisplay unified sound card.
  * Adapted from upstream ASoC es8389 driver.
  */
 
@@ -19,6 +19,10 @@
 
 #include "es8389.h"
 #include "whisplay.h"
+
+#ifndef REGCACHE_MAPLE
+#define REGCACHE_MAPLE REGCACHE_RBTREE
+#endif
 
 struct es8389_priv {
 	struct regmap *regmap;
@@ -382,6 +386,8 @@ static int es8389_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 			ES8389_MASTER_MODE_EN, ES8389_MASTER_MODE_EN);
 		break;
 	case SND_SOC_DAIFMT_CBC_CFC:
+		regmap_update_bits(es8389->regmap, ES8389_MASTER_MODE,
+			ES8389_MASTER_MODE_EN, 0);
 		break;
 	default:
 		return -EINVAL;
@@ -511,7 +517,9 @@ static int es8389_mute(struct snd_soc_dai *dai, int mute, int direction)
 	} else {
 		regmap_read(es8389->regmap, ES8389_CSM_STATE1, &regv);
 		if (regv != ES8389_STATE_ON) {
-			regmap_update_bits(es8389->regmap, ES8389_HPSW, 0x20, 0x20);
+			regmap_update_bits(es8389->regmap, ES8389_HPSW,
+					   ES8389_HPSW_HP_SWITCH_MASK,
+					   ES8389_HPSW_HP_SWITCH_ON);
 			regmap_write(es8389->regmap, ES8389_ANA_CTL1, 0xD9);
 			regmap_write(es8389->regmap, ES8389_ADC_EN, 0x8F);
 			regmap_write(es8389->regmap, ES8389_CSM_JUMP, 0xE4);
@@ -575,7 +583,9 @@ static int es8389_set_bias_level(struct snd_soc_component *component,
 		ret = clk_prepare_enable(es8389->mclk);
 		if (ret)
 			return ret;
-		regmap_update_bits(es8389->regmap, ES8389_HPSW, 0x20, 0x20);
+		regmap_update_bits(es8389->regmap, ES8389_HPSW,
+				   ES8389_HPSW_HP_SWITCH_MASK,
+				   ES8389_HPSW_HP_SWITCH_ON);
 		regmap_write(es8389->regmap, ES8389_ANA_CTL1, 0xD9);
 		regmap_write(es8389->regmap, ES8389_ADC_EN, 0x8F);
 		regmap_write(es8389->regmap, ES8389_CSM_JUMP, 0xE4);

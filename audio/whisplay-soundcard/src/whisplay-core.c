@@ -18,13 +18,22 @@
 #include <linux/string.h>
 #include <linux/workqueue.h>
 #include <linux/atomic.h>
+#include <linux/version.h>
 #include <sound/soc.h>
 #include <sound/control.h>
+#include <sound/pcm_params.h>
 #include <uapi/sound/asound.h>
 
 #include "whisplay.h"
 #include "es8389.h"
 #include "whisplay-gain-lut.h"
+
+#ifndef snd_soc_rtd_to_codec
+#define snd_soc_rtd_to_codec asoc_rtd_to_codec
+#endif
+#ifndef snd_soc_rtd_to_cpu
+#define snd_soc_rtd_to_cpu asoc_rtd_to_cpu
+#endif
 
 enum whisplay_chip_type whisplay_active_chip = WHISPLAY_CHIP_UNKNOWN;
 EXPORT_SYMBOL_GPL(whisplay_active_chip);
@@ -445,8 +454,8 @@ static int whisplay_wm8960_playback_chain(struct snd_soc_card *card, int hp_raw)
  * + full PCM ADC headroom.  Previously only Capture Volume was set and LINPUT1
  * stayed at 1, so UI/readback looked stuck and level barely changed.
  */
-static int whisplay_wm8960_capture_chain(struct snd_soc_card *card, int gain,
-					 int cap_raw)
+static int __maybe_unused whisplay_wm8960_capture_chain(struct snd_soc_card *card,
+							int gain, int cap_raw)
 {
 	int boost;
 	int ret;
@@ -486,7 +495,8 @@ static int whisplay_lut_raw(const int *lut, int gain)
  * ES8389 capture: three independent LUTs (PGA / ADC L/R / OSR).
  * Grid-calibrated from Whisplay bench measurements.
  */
-static int whisplay_es8389_capture_apply(struct snd_soc_card *card, int gain)
+static int __maybe_unused whisplay_es8389_capture_apply(struct snd_soc_card *card,
+							int gain)
 {
 	int pga, adc, osr;
 	int ret;
@@ -868,6 +878,14 @@ static int whisplay_i2c_probe(struct i2c_client *i2c)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
+static int whisplay_i2c_probe_legacy(struct i2c_client *i2c,
+				     const struct i2c_device_id *id)
+{
+	return whisplay_i2c_probe(i2c);
+}
+#endif
+
 static void whisplay_i2c_remove(struct i2c_client *i2c)
 {
 	mutex_lock(&whisplay_lock);
@@ -893,7 +911,11 @@ static struct i2c_driver whisplay_i2c_driver = {
 		.name = "whisplay",
 		.of_match_table = of_match_ptr(whisplay_i2c_of_match),
 	},
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
+	.probe = whisplay_i2c_probe_legacy,
+#else
 	.probe = whisplay_i2c_probe,
+#endif
 	.remove = whisplay_i2c_remove,
 	.id_table = whisplay_i2c_id,
 };
@@ -994,14 +1016,21 @@ static int whisplay_dai_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
 	unsigned int mclk_rate;
+	u32 configured_rate;
 	int ret;
 
 	whisplay_codec_component = codec_dai->component;
 
-	if (whisplay_active_chip == WHISPLAY_CHIP_WM8960)
-		mclk_rate = 24000000;
-	else
+	if (whisplay_active_chip == WHISPLAY_CHIP_WM8960) {
+		if (!of_property_read_u32(rtd->card->dev->of_node,
+					  "whisplay,wm8960-sysclk",
+					  &configured_rate))
+			mclk_rate = configured_rate;
+		else
+			mclk_rate = 24000000;
+	} else {
 		mclk_rate = 24576000;
+	}
 
 	ret = snd_soc_dai_set_sysclk(codec_dai, 0, mclk_rate,
 				      SND_SOC_CLOCK_IN);
@@ -1028,6 +1057,42 @@ static int whisplay_dai_prepare(struct snd_pcm_substream *substream)
 	ret = whisplay_wm8960_prime_capture_muted();
 	if (ret < 0)
 		return ret;
+
+	return 0;
+}
+
+static int whisplay_dai_hw_params(struct snd_pcm_substream *substream,
+				  struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
+	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
+	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
+	const char *mclk_fs_property;
+	unsigned int sysclk;
+	u32 mclk_fs;
+	int ret;
+
+	if (whisplay_active_chip == WHISPLAY_CHIP_WM8960)
+		mclk_fs_property = "whisplay,wm8960-mclk-fs";
+	else if (whisplay_active_chip == WHISPLAY_CHIP_ES8389)
+		mclk_fs_property = "whisplay,es8389-mclk-fs";
+	else
+		return 0;
+
+	if (of_property_read_u32(rtd->card->dev->of_node, mclk_fs_property,
+				 &mclk_fs))
+		return 0;
+
+	sysclk = params_rate(params) * mclk_fs;
+	ret = snd_soc_dai_set_sysclk(cpu_dai, 0, sysclk, SND_SOC_CLOCK_OUT);
+	if (ret && ret != -ENOTSUPP)
+		dev_warn(rtd->dev, "Failed to set CPU sysclk %u: %d\n",
+			 sysclk, ret);
+
+	ret = snd_soc_dai_set_sysclk(codec_dai, 0, sysclk, SND_SOC_CLOCK_IN);
+	if (ret && ret != -ENOTSUPP)
+		dev_warn(rtd->dev, "Failed to set codec sysclk %u: %d\n",
+			 sysclk, ret);
 
 	return 0;
 }
@@ -1065,6 +1130,7 @@ static int whisplay_dai_trigger(struct snd_pcm_substream *substream, int cmd)
 }
 
 static const struct snd_soc_ops whisplay_dai_ops = {
+	.hw_params = whisplay_dai_hw_params,
 	.prepare = whisplay_dai_prepare,
 	.trigger = whisplay_dai_trigger,
 };
@@ -1229,11 +1295,15 @@ static int whisplay_card_probe(struct platform_device *pdev)
 	dai_link->num_cpus = 1;
 	dai_link->platforms = platforms;
 	dai_link->num_platforms = 1;
-	dai_link->dai_fmt = SND_SOC_DAIFMT_I2S |
-			    SND_SOC_DAIFMT_NB_NF |
-			    SND_SOC_DAIFMT_CBC_CFC;
+	dai_link->dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF;
+	if (chip == WHISPLAY_CHIP_ES8389 &&
+	    of_property_read_bool(dev->of_node, "whisplay,es8389-codec-master"))
+		dai_link->dai_fmt |= SND_SOC_DAIFMT_CBC_CFP;
+	else
+		dai_link->dai_fmt |= SND_SOC_DAIFMT_CBC_CFC;
 #ifdef SND_SOC_DAIFMT_CONT
-	dai_link->dai_fmt |= SND_SOC_DAIFMT_CONT;
+	if (!of_property_read_bool(dev->of_node, "whisplay,no-continuous-clock"))
+		dai_link->dai_fmt |= SND_SOC_DAIFMT_CONT;
 #endif
 	dai_link->init = whisplay_dai_init;
 	dai_link->ops = &whisplay_dai_ops;
