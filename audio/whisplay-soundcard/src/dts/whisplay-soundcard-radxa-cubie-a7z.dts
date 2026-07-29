@@ -1,0 +1,187 @@
+/*
+ * Device Tree overlay for the Whisplay unified sound card on
+ * Radxa Cubie A7Z (Allwinner A733).
+ *
+ * WM8960 or ES8389 is connected to the 40-pin header:
+ *   PIN_3  SDA  -> TWI7_SDA (PJ22)
+ *   PIN_5  SCL  -> TWI7_SCL (PJ23)
+ *   PIN_12 BCLK -> I2S0_BCLK (PB5)
+ *   PIN_35 LRCK -> I2S0_LRCK (PB6)
+ *   PIN_36 MCLK -> I2S0_MCLK (PB4)
+ *   PIN_38 SDI  -> I2S0_DIN0 (PB8)
+ *   PIN_40 SDO  -> I2S0_DOUT0 (PB7)
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	metadata {
+		title = "Enable the unified Whisplay sound card on Cubie A7Z";
+		compatible = "radxa,cubie-a7z";
+		category = "misc";
+		exclusive = "i2s0_plat", "i2s0_mach",
+			    "PB4", "PB5", "PB6", "PB8", "PB7";
+		description = "Enable WM8960 or ES8389 auto-detection on TWI7 and I2S0.";
+	};
+
+	fragment@0 {
+		target-path = "/";
+		__overlay__ {
+			es8389_mclk: es8389-mclk {
+				compatible = "fixed-clock";
+				#clock-cells = <0>;
+				clock-frequency = <12288000>;
+				clock-output-names = "es8389-mclk";
+			};
+
+			es8389_vddd: es8389-vddd {
+				compatible = "regulator-fixed";
+				regulator-name = "es8389-vddd";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+			};
+
+			es8389_vdda: es8389-vdda {
+				compatible = "regulator-fixed";
+				regulator-name = "es8389-vdda";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+			};
+
+			whisplay_sound: whisplay-sound {
+				compatible = "pisugar,whisplay-soundcard";
+				i2s-controller = <&i2s0_plat>;
+				whisplay,es8389-codec = <&codec_es8389>;
+				whisplay,es8389-sysclk = <12288000>;
+				whisplay,es8389-mclk-fs = <256>;
+				whisplay,wm8960-codec = <&codec_wm8960>;
+				whisplay,wm8960-sysclk = <12288000>;
+				whisplay,wm8960-mclk-fs = <256>;
+				whisplay,wm8960-bound-detect;
+				whisplay,sunxi-a733-i2s;
+				whisplay,force-48k;
+				whisplay,no-continuous-clock;
+				status = "okay";
+			};
+		};
+	};
+
+	/* TWI7 must also be enabled by sun60iw2p1-twi7.dtbo. */
+	fragment@1 {
+		target = <&twi7>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			/*
+			 * The stock TWI7 overlay selects 400 kHz and the vendor
+			 * FIFO/driver transfer mode.  ES8389 register bursts hit
+			 * arbitration/BUS errors in that mode on A7Z.  The legacy
+			 * engine path is stable and is sufficient for both codecs.
+			 */
+			clock-frequency = <100000>;
+			twi_drv_used = <0>;
+			status = "okay";
+
+			codec_es8389: whisplay@10 {
+				compatible = "pisugar,whisplay";
+				reg = <0x10>;
+				#sound-dai-cells = <0>;
+				clocks = <&es8389_mclk>;
+				clock-names = "mclk";
+				vddd-supply = <&es8389_vddd>;
+				vdda-supply = <&es8389_vdda>;
+				everest,mclk-src = /bits/ 8 <0x40>;
+				whisplay,a733-i2c-retry;
+				status = "okay";
+			};
+
+			codec_wm8960: wm8960@1a {
+				compatible = "wlf,wm8960";
+				reg = <0x1a>;
+				#sound-dai-cells = <0>;
+				wlf,shared-lrclk;
+				status = "okay";
+			};
+		};
+	};
+
+	fragment@2 {
+		target = <&pio>;
+		__overlay__ {
+			whisplay_i2s0_mclk: whisplay-i2s0-mclk {
+				pins = "PB4";
+				function = "i2s0_mclk";
+				allwinner,drive = <1>;
+				bias-disable;
+			};
+
+			whisplay_i2s0_bclk: whisplay-i2s0-bclk {
+				pins = "PB5";
+				function = "i2s0_bclk";
+				allwinner,drive = <1>;
+				bias-disable;
+			};
+
+			whisplay_i2s0_lrck: whisplay-i2s0-lrck {
+				pins = "PB6";
+				function = "i2s0_lrck";
+				allwinner,drive = <1>;
+				bias-disable;
+			};
+
+			whisplay_i2s0_din: whisplay-i2s0-din {
+				pins = "PB8";
+				function = "i2s0_din0";
+				allwinner,drive = <1>;
+				bias-pull-down;
+			};
+
+			whisplay_i2s0_dout: whisplay-i2s0-dout {
+				pins = "PB7";
+				function = "i2s0_dout0";
+				allwinner,drive = <1>;
+				bias-pull-down;
+			};
+
+			whisplay_i2s0_sleep: whisplay-i2s0-sleep {
+				pins = "PB4", "PB5", "PB6", "PB8", "PB7";
+				function = "io_disabled";
+				allwinner,drive = <1>;
+				bias-disable;
+			};
+		};
+	};
+
+	fragment@3 {
+		target = <&i2s0_plat>;
+		__overlay__ {
+			tdm-num = <0>;
+			tx-pin = <0>;
+			rx-pin = <0>;
+			tx-hub-en;
+			rx-sync-en;
+			pinctrl-used;
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <&whisplay_i2s0_mclk
+				     &whisplay_i2s0_bclk
+				     &whisplay_i2s0_lrck
+				     &whisplay_i2s0_din
+				     &whisplay_i2s0_dout>;
+			pinctrl-1 = <&whisplay_i2s0_sleep>;
+			status = "okay";
+		};
+	};
+
+	/* Do not let the vendor machine driver claim I2S0 as a second card. */
+	fragment@4 {
+		target = <&i2s0_mach>;
+		__overlay__ {
+			status = "disabled";
+		};
+	};
+};

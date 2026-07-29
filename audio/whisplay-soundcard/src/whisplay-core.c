@@ -18,13 +18,22 @@
 #include <linux/string.h>
 #include <linux/workqueue.h>
 #include <linux/atomic.h>
+#include <linux/version.h>
 #include <sound/soc.h>
 #include <sound/control.h>
+#include <sound/pcm_params.h>
 #include <uapi/sound/asound.h>
 
 #include "whisplay.h"
 #include "es8389.h"
 #include "whisplay-gain-lut.h"
+
+#ifndef snd_soc_rtd_to_codec
+#define snd_soc_rtd_to_codec asoc_rtd_to_codec
+#endif
+#ifndef snd_soc_rtd_to_cpu
+#define snd_soc_rtd_to_cpu asoc_rtd_to_cpu
+#endif
 
 enum whisplay_chip_type whisplay_active_chip = WHISPLAY_CHIP_UNKNOWN;
 EXPORT_SYMBOL_GPL(whisplay_active_chip);
@@ -93,6 +102,20 @@ static void whisplay_boot_work_fn(struct work_struct *work)
 #define WHISPLAY_WM8960_ADC_STARTUP_MUTE_MS 5
 #define WHISPLAY_WM8960_ADC_RAMP_STEPS 24
 #define WHISPLAY_WM8960_ADC_RAMP_US 1000
+#define WHISPLAY_A733_RATE 48000U
+#define WHISPLAY_A733_PLL_RATE 24576000U
+#define WHISPLAY_A733_SLOTS 2
+#define WHISPLAY_A733_SLOT_WIDTH 32
+#define WHISPLAY_A733_I2S_TX0CHSEL 0x34
+#define WHISPLAY_A733_I2S_TX1CHSEL 0x38
+#define WHISPLAY_A733_I2S_TX2CHSEL 0x3c
+#define WHISPLAY_A733_I2S_TX3CHSEL 0x40
+#define WHISPLAY_A733_I2S_RXCHSEL 0x64
+#define WHISPLAY_A733_I2S_DATA_DELAY_SHIFT 20
+#define WHISPLAY_A733_I2S_DATA_DELAY_MASK \
+	(0x3U << WHISPLAY_A733_I2S_DATA_DELAY_SHIFT)
+#define WHISPLAY_A733_I2S_DATA_DELAY_I2S \
+	(0x1U << WHISPLAY_A733_I2S_DATA_DELAY_SHIFT)
 
 static int whisplay_playback_gain_cache = WHISPLAY_PLAYBACK_GAIN_DEFAULT;
 static int whisplay_capture_gain_cache = WHISPLAY_CAPTURE_GAIN_DEFAULT;
@@ -445,8 +468,8 @@ static int whisplay_wm8960_playback_chain(struct snd_soc_card *card, int hp_raw)
  * + full PCM ADC headroom.  Previously only Capture Volume was set and LINPUT1
  * stayed at 1, so UI/readback looked stuck and level barely changed.
  */
-static int whisplay_wm8960_capture_chain(struct snd_soc_card *card, int gain,
-					 int cap_raw)
+static int __maybe_unused whisplay_wm8960_capture_chain(struct snd_soc_card *card,
+							int gain, int cap_raw)
 {
 	int boost;
 	int ret;
@@ -486,7 +509,8 @@ static int whisplay_lut_raw(const int *lut, int gain)
  * ES8389 capture: three independent LUTs (PGA / ADC L/R / OSR).
  * Grid-calibrated from Whisplay bench measurements.
  */
-static int whisplay_es8389_capture_apply(struct snd_soc_card *card, int gain)
+static int __maybe_unused whisplay_es8389_capture_apply(struct snd_soc_card *card,
+							int gain)
 {
 	int pga, adc, osr;
 	int ret;
@@ -807,6 +831,85 @@ static const struct snd_kcontrol_new whisplay_unified_gain_controls[] = {
 
 /* ===== I2C Probe for ES8389 only (0x10) ===== */
 
+#define WHISPLAY_I2C_MAX_ATTEMPTS 5
+#define WHISPLAY_I2C_GAP_US 1000
+#define WHISPLAY_I2C_RETRY_US 2000
+
+/*
+ * The A733 vendor TWI controller occasionally completes a transfer before
+ * its STOP state is fully idle.  ES8389 setup contains dense register bursts,
+ * so the next transfer can otherwise fail with BUS error/arbitration lost.
+ * Keep the workaround at the regmap bus boundary so codec init, DAPM, mixer
+ * controls and PCM hw_params all receive the same whole-transaction retry.
+ */
+static int whisplay_i2c_regmap_write(void *context, const void *data,
+				    size_t count)
+{
+	struct i2c_client *i2c = context;
+	int attempt;
+	int ret = -EIO;
+
+	for (attempt = 0; attempt < WHISPLAY_I2C_MAX_ATTEMPTS; attempt++) {
+		ret = i2c_master_send(i2c, data, count);
+		if (ret == count) {
+			usleep_range(WHISPLAY_I2C_GAP_US,
+				     WHISPLAY_I2C_GAP_US + 500);
+			return 0;
+		}
+		if (ret >= 0)
+			ret = -EIO;
+		usleep_range(WHISPLAY_I2C_RETRY_US,
+			     WHISPLAY_I2C_RETRY_US + 1000);
+	}
+
+	return ret;
+}
+
+static int whisplay_i2c_regmap_read(void *context,
+				   const void *reg_buf, size_t reg_size,
+				   void *val_buf, size_t val_size)
+{
+	struct i2c_client *i2c = context;
+	struct i2c_msg msgs[2] = {
+		{
+			.addr = i2c->addr,
+			.flags = i2c->flags,
+			.len = reg_size,
+			.buf = (void *)reg_buf,
+		},
+		{
+			.addr = i2c->addr,
+			.flags = i2c->flags | I2C_M_RD,
+			.len = val_size,
+			.buf = val_buf,
+		},
+	};
+	int attempt;
+	int ret = -EIO;
+
+	for (attempt = 0; attempt < WHISPLAY_I2C_MAX_ATTEMPTS; attempt++) {
+		ret = i2c_transfer(i2c->adapter, msgs, ARRAY_SIZE(msgs));
+		if (ret == ARRAY_SIZE(msgs)) {
+			usleep_range(WHISPLAY_I2C_GAP_US,
+				     WHISPLAY_I2C_GAP_US + 500);
+			return 0;
+		}
+		if (ret >= 0)
+			ret = -EIO;
+		usleep_range(WHISPLAY_I2C_RETRY_US,
+			     WHISPLAY_I2C_RETRY_US + 1000);
+	}
+
+	return ret;
+}
+
+static const struct regmap_bus whisplay_es8389_regmap_bus = {
+	.write = whisplay_i2c_regmap_write,
+	.read = whisplay_i2c_regmap_read,
+	.reg_format_endian_default = REGMAP_ENDIAN_BIG,
+	.val_format_endian_default = REGMAP_ENDIAN_BIG,
+};
+
 static int whisplay_i2c_probe(struct i2c_client *i2c)
 {
 	struct whisplay_priv *priv;
@@ -827,7 +930,13 @@ static int whisplay_i2c_probe(struct i2c_client *i2c)
 	priv->codec_of_node = i2c->dev.of_node;
 	i2c_set_clientdata(i2c, priv);
 
-	regmap = devm_regmap_init_i2c(i2c, &es8389_regmap_config);
+	if (device_property_read_bool(&i2c->dev,
+				      "whisplay,a733-i2c-retry"))
+		regmap = devm_regmap_init(&i2c->dev,
+					 &whisplay_es8389_regmap_bus,
+					 i2c, &es8389_regmap_config);
+	else
+		regmap = devm_regmap_init_i2c(i2c, &es8389_regmap_config);
 	if (IS_ERR(regmap))
 		return PTR_ERR(regmap);
 
@@ -868,12 +977,28 @@ static int whisplay_i2c_probe(struct i2c_client *i2c)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
+static int whisplay_i2c_probe_legacy(struct i2c_client *i2c,
+				     const struct i2c_device_id *id)
+{
+	return whisplay_i2c_probe(i2c);
+}
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0)
+static int whisplay_i2c_remove(struct i2c_client *i2c)
+#else
 static void whisplay_i2c_remove(struct i2c_client *i2c)
+#endif
 {
 	mutex_lock(&whisplay_lock);
 	whisplay_active_chip = WHISPLAY_CHIP_UNKNOWN;
 	whisplay_codec_np = NULL;
 	mutex_unlock(&whisplay_lock);
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0)
+	return 0;
+#endif
 }
 
 static const struct of_device_id whisplay_i2c_of_match[] = {
@@ -893,7 +1018,11 @@ static struct i2c_driver whisplay_i2c_driver = {
 		.name = "whisplay",
 		.of_match_table = of_match_ptr(whisplay_i2c_of_match),
 	},
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
+	.probe = whisplay_i2c_probe_legacy,
+#else
 	.probe = whisplay_i2c_probe,
+#endif
 	.remove = whisplay_i2c_remove,
 	.id_table = whisplay_i2c_id,
 };
@@ -939,6 +1068,30 @@ static struct i2c_adapter *whisplay_get_codec_adapter(struct device_node *codec_
 	adap = of_get_i2c_adapter_by_node(parent);
 	of_node_put(parent);
 	return adap;
+}
+
+/*
+ * WM8960 registers are write-only, so probing the address directly is not
+ * reliable on every controller (A733 sunxi-twi, in particular, times out on
+ * zero-length transfers).  Let the upstream codec driver perform its reset
+ * write and treat a successfully bound device as positive detection.
+ */
+static bool whisplay_wm8960_bound(struct device_node *codec_np)
+{
+	struct i2c_client *client;
+	bool bound;
+
+	if (!codec_np)
+		return false;
+
+	client = of_find_i2c_device_by_node(codec_np);
+	if (!client)
+		return false;
+
+	/* device_is_bound() is not exported by the A733 5.15 vendor kernel. */
+	bound = client->dev.driver != NULL;
+	put_device(&client->dev);
+	return bound;
 }
 
 /* ===== Codec Default Gain Calibration =====
@@ -994,19 +1147,48 @@ static int whisplay_dai_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
 	unsigned int mclk_rate;
+	u32 configured_rate;
 	int ret;
 
 	whisplay_codec_component = codec_dai->component;
 
-	if (whisplay_active_chip == WHISPLAY_CHIP_WM8960)
-		mclk_rate = 24000000;
-	else
+	if (whisplay_active_chip == WHISPLAY_CHIP_WM8960) {
+		if (!of_property_read_u32(rtd->card->dev->of_node,
+					  "whisplay,wm8960-sysclk",
+					  &configured_rate))
+			mclk_rate = configured_rate;
+		else
+			mclk_rate = 24000000;
+	} else if (!of_property_read_u32(rtd->card->dev->of_node,
+					 "whisplay,es8389-sysclk",
+					 &configured_rate)) {
+		mclk_rate = configured_rate;
+	} else {
 		mclk_rate = 24576000;
+	}
 
 	ret = snd_soc_dai_set_sysclk(codec_dai, 0, mclk_rate,
 				      SND_SOC_CLOCK_IN);
 	if (ret && ret != -ENOTSUPP)
 		dev_warn(rtd->dev, "Failed to set codec sysclk: %d\n", ret);
+
+	return 0;
+}
+
+static int whisplay_dai_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
+
+	/*
+	 * The A733 BSP I2S path is validated at 48 kHz.  Constraining ALSA here
+	 * also prevents PipeWire/PulseAudio from repeatedly probing a clock
+	 * setup that the vendor driver cannot service safely.
+	 */
+	if (of_property_read_bool(rtd->card->dev->of_node,
+				  "whisplay,force-48k"))
+		return snd_pcm_hw_constraint_single(substream->runtime,
+						    SNDRV_PCM_HW_PARAM_RATE,
+						    WHISPLAY_A733_RATE);
 
 	return 0;
 }
@@ -1028,6 +1210,150 @@ static int whisplay_dai_prepare(struct snd_pcm_substream *substream)
 	ret = whisplay_wm8960_prime_capture_muted();
 	if (ret < 0)
 		return ret;
+
+	return 0;
+}
+
+/*
+ * The A733 BSP carries I2S's one-bit data delay outside the standard
+ * snd_soc_dai_set_fmt() API.  Its stock machine driver sends a private
+ * snd_sunxi DAI_UCFMT notifier with data_late=1; an external machine driver
+ * cannot use that private header, and set_fmt(I2S) otherwise leaves every
+ * TX/RX offset at zero.  The result is a one-bit-early capture which drops
+ * the sign bit (samples alternate between zero and positive full scale).
+ *
+ * Program the same TX_OFFSET/RX_OFFSET fields used by the vendor notifier.
+ * This is deliberately gated by whisplay,sunxi-a733-i2s and is applied after
+ * every set_fmt(), since the vendor callback rewrites these fields there.
+ */
+static int whisplay_a733_set_i2s_data_delay(struct snd_soc_dai *cpu_dai)
+{
+	static const unsigned int channel_select_regs[] = {
+		WHISPLAY_A733_I2S_TX0CHSEL,
+		WHISPLAY_A733_I2S_TX1CHSEL,
+		WHISPLAY_A733_I2S_TX2CHSEL,
+		WHISPLAY_A733_I2S_TX3CHSEL,
+		WHISPLAY_A733_I2S_RXCHSEL,
+	};
+	struct regmap *regmap;
+	int i;
+	int ret;
+
+	regmap = dev_get_regmap(cpu_dai->dev, NULL);
+	if (!regmap)
+		return -ENODEV;
+
+	for (i = 0; i < ARRAY_SIZE(channel_select_regs); i++) {
+		ret = regmap_update_bits(regmap, channel_select_regs[i],
+					 WHISPLAY_A733_I2S_DATA_DELAY_MASK,
+					 WHISPLAY_A733_I2S_DATA_DELAY_I2S);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+static int whisplay_dai_hw_params(struct snd_pcm_substream *substream,
+				  struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
+	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
+	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
+	const char *mclk_fs_property;
+	unsigned int bclk_ratio;
+	unsigned int rate;
+	unsigned int sysclk;
+	u32 mclk_fs;
+	bool sunxi_a733;
+	int ret;
+
+	sunxi_a733 = of_property_read_bool(rtd->card->dev->of_node,
+					  "whisplay,sunxi-a733-i2s");
+	rate = params_rate(params);
+
+	if (whisplay_active_chip == WHISPLAY_CHIP_WM8960)
+		mclk_fs_property = "whisplay,wm8960-mclk-fs";
+	else if (whisplay_active_chip == WHISPLAY_CHIP_ES8389)
+		mclk_fs_property = "whisplay,es8389-mclk-fs";
+	else
+		return 0;
+
+	if (of_property_read_u32(rtd->card->dev->of_node, mclk_fs_property,
+				 &mclk_fs))
+		return 0;
+
+	sysclk = rate * mclk_fs;
+
+	/*
+	 * Allwinner's A733 BSP CPU DAI does not derive its PLL implicitly.
+	 * Its official machine driver programs PLL, MCLK, BCLK and TDM in this
+	 * order.  Calling set_sysclk() without set_pll() leaves pllclk_freq at
+	 * zero; the following CPU hw_params then fails in a tight userspace
+	 * retry loop and can eventually crash the vendor kernel.
+	 */
+	if (sunxi_a733) {
+		if (rate != WHISPLAY_A733_RATE)
+			return -EINVAL;
+
+		ret = snd_soc_dai_set_pll(cpu_dai, substream->stream, 0,
+					  WHISPLAY_A733_PLL_RATE,
+					  WHISPLAY_A733_PLL_RATE);
+		if (ret) {
+			dev_err(rtd->dev, "Failed to set A733 CPU PLL: %d\n", ret);
+			return ret;
+		}
+	}
+
+	ret = snd_soc_dai_set_sysclk(cpu_dai, 0, sysclk, SND_SOC_CLOCK_OUT);
+	if (ret && ret != -ENOTSUPP) {
+		dev_warn(rtd->dev, "Failed to set CPU sysclk %u: %d\n",
+			 sysclk, ret);
+		if (sunxi_a733)
+			return ret;
+	}
+
+	ret = snd_soc_dai_set_sysclk(codec_dai, 0, sysclk, SND_SOC_CLOCK_IN);
+	if (ret && ret != -ENOTSUPP) {
+		dev_warn(rtd->dev, "Failed to set codec sysclk %u: %d\n",
+			 sysclk, ret);
+		if (sunxi_a733)
+			return ret;
+	}
+
+	if (!sunxi_a733)
+		return 0;
+
+	bclk_ratio = WHISPLAY_A733_PLL_RATE /
+		     (rate * WHISPLAY_A733_SLOTS * WHISPLAY_A733_SLOT_WIDTH);
+	ret = snd_soc_dai_set_bclk_ratio(cpu_dai, bclk_ratio);
+	if (ret && ret != -ENOTSUPP) {
+		dev_err(rtd->dev, "Failed to set A733 BCLK ratio %u: %d\n",
+			bclk_ratio, ret);
+		return ret;
+	}
+
+	ret = snd_soc_dai_set_fmt(cpu_dai, rtd->dai_link->dai_fmt);
+	if (ret && ret != -ENOTSUPP) {
+		dev_err(rtd->dev, "Failed to set A733 CPU DAI format: %d\n",
+			ret);
+		return ret;
+	}
+
+	ret = whisplay_a733_set_i2s_data_delay(cpu_dai);
+	if (ret) {
+		dev_err(rtd->dev, "Failed to set A733 I2S data delay: %d\n",
+			ret);
+		return ret;
+	}
+
+	ret = snd_soc_dai_set_tdm_slot(cpu_dai, 0, 0,
+				       WHISPLAY_A733_SLOTS,
+				       WHISPLAY_A733_SLOT_WIDTH);
+	if (ret && ret != -ENOTSUPP) {
+		dev_err(rtd->dev, "Failed to set A733 TDM slots: %d\n", ret);
+		return ret;
+	}
 
 	return 0;
 }
@@ -1065,6 +1391,8 @@ static int whisplay_dai_trigger(struct snd_pcm_substream *substream, int cmd)
 }
 
 static const struct snd_soc_ops whisplay_dai_ops = {
+	.startup = whisplay_dai_startup,
+	.hw_params = whisplay_dai_hw_params,
 	.prepare = whisplay_dai_prepare,
 	.trigger = whisplay_dai_trigger,
 };
@@ -1144,29 +1472,38 @@ static int whisplay_card_probe(struct platform_device *pdev)
 	mutex_unlock(&whisplay_lock);
 
 	if (chip == WHISPLAY_CHIP_UNKNOWN) {
-		/* Try WM8960 detection on the bus that hosts the WM8960
-		 * DT node. Falls back to i2c-1 if DT does not specify.
-		 */
 		wm_np = of_parse_phandle(dev->of_node,
 					 "whisplay,wm8960-codec", 0);
-		adap = whisplay_get_codec_adapter(wm_np);
-		if (!adap)
-			adap = i2c_get_adapter(1);
-		if (!adap) {
-			of_node_put(wm_np);
-			of_node_put(cpu_np);
-			return -EPROBE_DEFER;
-		}
+		if (of_property_read_bool(dev->of_node,
+					  "whisplay,wm8960-bound-detect")) {
+			if (whisplay_wm8960_bound(wm_np)) {
+				chip = WHISPLAY_CHIP_WM8960;
+				dev_info(dev,
+					 "Detected bound WM8960 codec at 0x1a\n");
+				mutex_lock(&whisplay_lock);
+				whisplay_active_chip = WHISPLAY_CHIP_WM8960;
+				mutex_unlock(&whisplay_lock);
+			}
+		} else {
+			adap = whisplay_get_codec_adapter(wm_np);
+			if (!adap)
+				adap = i2c_get_adapter(1);
+			if (!adap) {
+				of_node_put(wm_np);
+				of_node_put(cpu_np);
+				return -EPROBE_DEFER;
+			}
 
-		if (whisplay_wm8960_present(adap)) {
-			chip = WHISPLAY_CHIP_WM8960;
-			dev_info(dev, "Detected WM8960 at 0x1a on %s\n",
-				 adap->name);
-			mutex_lock(&whisplay_lock);
-			whisplay_active_chip = WHISPLAY_CHIP_WM8960;
-			mutex_unlock(&whisplay_lock);
+			if (whisplay_wm8960_present(adap)) {
+				chip = WHISPLAY_CHIP_WM8960;
+				dev_info(dev, "Detected WM8960 at 0x1a on %s\n",
+					 adap->name);
+				mutex_lock(&whisplay_lock);
+				whisplay_active_chip = WHISPLAY_CHIP_WM8960;
+				mutex_unlock(&whisplay_lock);
+			}
+			i2c_put_adapter(adap);
 		}
-		i2c_put_adapter(adap);
 
 		if (chip == WHISPLAY_CHIP_UNKNOWN) {
 			of_node_put(wm_np);
@@ -1229,11 +1566,15 @@ static int whisplay_card_probe(struct platform_device *pdev)
 	dai_link->num_cpus = 1;
 	dai_link->platforms = platforms;
 	dai_link->num_platforms = 1;
-	dai_link->dai_fmt = SND_SOC_DAIFMT_I2S |
-			    SND_SOC_DAIFMT_NB_NF |
-			    SND_SOC_DAIFMT_CBC_CFC;
+	dai_link->dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF;
+	if (chip == WHISPLAY_CHIP_ES8389 &&
+	    of_property_read_bool(dev->of_node, "whisplay,es8389-codec-master"))
+		dai_link->dai_fmt |= SND_SOC_DAIFMT_CBC_CFP;
+	else
+		dai_link->dai_fmt |= SND_SOC_DAIFMT_CBC_CFC;
 #ifdef SND_SOC_DAIFMT_CONT
-	dai_link->dai_fmt |= SND_SOC_DAIFMT_CONT;
+	if (!of_property_read_bool(dev->of_node, "whisplay,no-continuous-clock"))
+		dai_link->dai_fmt |= SND_SOC_DAIFMT_CONT;
 #endif
 	dai_link->init = whisplay_dai_init;
 	dai_link->ops = &whisplay_dai_ops;

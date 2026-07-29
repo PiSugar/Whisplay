@@ -32,6 +32,8 @@ sudo bash install_driver.sh
 sudo reboot
 ```
 
+When Raspberry Pi boots with a programmed PiSugar Whisplay HAT EEPROM, the installer leaves `whisplay-soundcard` overlay loading to the EEPROM and removes any legacy manual `dtoverlay=whisplay-soundcard` config.
+
 > ⚠️ **Important Hardware Warning (A7Z only)**  
 > Due to circuit incompatibility, the physical button on Whisplay HAT is **not safe to use on Radxa Cubie A7Z**.  
 > **Do not press the button**, otherwise the A7Z may shut down / lose power immediately.
@@ -109,7 +111,7 @@ The repo root is organized by responsibility:
 - `install_driver.sh`: auto-detecting driver installer
 - `script/`: platform install scripts
 - `daemon/`: local hardware daemon, its service installer, and `default_apps/`
-- `audio/`: audio install assets, DTS overlays, and the bundled unified Raspberry Pi sound card driver
+- `audio/`: audio install assets, DTS overlays, and the bundled unified Whisplay sound card driver
 - `example/`: end-user demos
 
 #### 1. `runtime/whisplay.py`
@@ -136,10 +138,9 @@ The repo root is organized by responsibility:
     sudo bash daemon/install_whisplay_daemon_service.sh
     ```
   * **Install result**: the installer writes `~/.whisplay-daemon/settings.json` and seeds the default example app JSON files into `~/.whisplay-daemon/app/`
-
 #### 2. Unified Audio Driver
 
-  * **Source**: Raspberry Pi uses the bundled unified Whisplay sound card driver in `audio/whisplay-soundcard/`. Radxa uses the custom overlays in `audio/`.
+  * **Source**: Raspberry Pi, Radxa ZERO 3W, and Radxa Cubie A7Z use the bundled unified Whisplay sound card driver in `audio/whisplay-soundcard/`, compatible with WM8960 and ES8389 codec variants.
 
   * **Legacy driver**: Older driver support is kept on the `support/wm8960` branch. If you need the legacy driver, check out that branch before installing.
 
@@ -159,14 +160,17 @@ The repo root is organized by responsibility:
     sudo bash script/install_radxa_cubie_a7z.sh
     ```
 
-#### 3. Bundled Raspberry Pi Sound Card Driver
+#### 3. Bundled Unified Sound Card Driver
 
-  * `audio/whisplay-soundcard/` - unified Raspberry Pi driver source, install scripts, and ALSA config. `script/install_raspberry_pi.sh` builds and installs it directly from this repository.
+  * `audio/whisplay-soundcard/` - unified driver source, install scripts, ALSA config, and platform DTS overlays. All three platform installers build and install it directly from this repository.
 
 #### 4. Device Tree Overlays (Radxa only)
 
-  * `audio/wm8960-radxa-zero3.dts` - DT overlay for WM8960 codec on Radxa ZERO 3W (RK3566), configuring I2C3 and I2S3.
-  * `audio/wm8960-cubie-a7z.dts` - DT overlay for WM8960 codec on Radxa Cubie A7Z (Allwinner A733), configuring TWI7 and I2S0.
+  * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-radxa-zero3w.dts` - unified DT overlay for WM8960 and ES8389 codec variants on Radxa ZERO 3W (RK3566), configuring I2C3 and I2S3.
+  * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-radxa-cubie-a7z.dts` - unified DT overlay for WM8960 and ES8389 codec variants on Radxa Cubie A7Z (Allwinner A733), configuring TWI7 and I2S0.
+  * **Cubie A7Z audio constraints**: the vendor I2S0 path is constrained to 48 kHz with two 32-bit slots. The unified machine driver also applies the A733 vendor-specific one-bit I2S TX/RX data delay so signed capture samples remain aligned.
+  * **Cubie A7Z TWI stability**: TWI7 runs at 100 kHz in engine mode. ES8389 regmap transactions use bounded retry and inter-transfer delays to tolerate the controller's occasional arbitration/BUS errors.
+  * **Cubie A7Z boot services**: `whisplay-soundcard-a7z-recover.service` and `whisplay-soundcard-warmup.service` are installed but disabled by default. Set `WHISPLAY_A7Z_RECOVERY=1` or `WHISPLAY_A7Z_WARMUP=1` during sound-card installation only when those workarounds are explicitly required.
   * **Note**: These are automatically compiled and installed by the respective install scripts.
 
 

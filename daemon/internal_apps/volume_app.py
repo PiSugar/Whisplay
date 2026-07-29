@@ -42,7 +42,7 @@ class VolumeInternalApp:
         (100, 127),
     ]
     PREVIEW_FREQUENCIES = (740.0, 980.0)
-    PREVIEW_DURATION_SEC = 0.10
+    PREVIEW_DURATION_SEC = 0.22
 
     def __init__(self, lock, mark_dirty, run_command, spawn_worker, request_exit):
         self._lock = lock
@@ -254,10 +254,10 @@ class VolumeInternalApp:
         return min(self.OPTIONS, key=lambda candidate: (abs(candidate - percent), -candidate))
 
     def _write_preview_tone(self, path: str, frequency: float, duration_sec: float, volume: float):
-        sample_rate = 22050
+        sample_rate = 48000
         total_samples = max(1, int(sample_rate * duration_sec))
         with wave.open(path, "wb") as wav_file:
-            wav_file.setnchannels(1)
+            wav_file.setnchannels(2)
             wav_file.setsampwidth(2)
             wav_file.setframerate(sample_rate)
             frames = bytearray()
@@ -268,15 +268,34 @@ class VolumeInternalApp:
                 fade_out = min(1.0, (total_samples - index) / max(1, int(sample_rate * 0.035)))
                 value = int(32767 * volume * min(fade_in, fade_out) * math.sin(phase))
                 frames.extend(struct.pack("<h", value))
+                frames.extend(struct.pack("<h", value))
             wav_file.writeframes(frames)
+
+    def _preview_devices(self) -> list[str]:
+        devices = []
+        if self._is_unified_control(self.state.control_name):
+            devices.append("whisplaysound")
+        elif self.state.card:
+            if self.state.card == "whisplaysound":
+                devices.append("whisplaysound")
+            else:
+                devices.append(f"plughw:{self.state.card}")
+        devices.append("default")
+        return list(dict.fromkeys(devices))
 
     def _play_preview(self):
         path = os.path.join(tempfile.gettempdir(), "whisplay-volume-preview.wav")
         try:
             self._write_preview_tone(path, self.PREVIEW_FREQUENCIES[0], self.PREVIEW_DURATION_SEC, 0.34)
-            self._run_command(["aplay", "-q", path], timeout=4.0)
+            for device in self._preview_devices():
+                result = self._run_command(["aplay", "-q", "-D", device, path], timeout=4.0)
+                if result.returncode == 0:
+                    break
             self._write_preview_tone(path, self.PREVIEW_FREQUENCIES[1], self.PREVIEW_DURATION_SEC, 0.28)
-            self._run_command(["aplay", "-q", path], timeout=4.0)
+            for device in self._preview_devices():
+                result = self._run_command(["aplay", "-q", "-D", device, path], timeout=4.0)
+                if result.returncode == 0:
+                    break
         except Exception:
             return
 

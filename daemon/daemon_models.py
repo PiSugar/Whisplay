@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import mmap
 import subprocess
 from dataclasses import dataclass, field
