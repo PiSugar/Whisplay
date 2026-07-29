@@ -32,6 +32,8 @@ sudo bash install_driver.sh
 sudo reboot
 ```
 
+When Raspberry Pi boots with a programmed PiSugar Whisplay HAT EEPROM, the installer leaves `whisplay-soundcard` overlay loading to the EEPROM and removes any legacy manual `dtoverlay=whisplay-soundcard` config.
+
 > ⚠️ **Important Hardware Warning (A7Z only)**  
 > Due to circuit incompatibility, the physical button on Whisplay HAT is **not safe to use on Radxa Cubie A7Z**.  
 > **Do not press the button**, otherwise the A7Z may shut down / lose power immediately.

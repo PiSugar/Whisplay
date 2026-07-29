@@ -32,6 +32,8 @@ sudo bash install_driver.sh
 sudo reboot
 ```
 
+如果 Raspberry Pi 启动时检测到已烧录的 PiSugar Whisplay HAT EEPROM，安装脚本会让 EEPROM 负责自动加载 `whisplay-soundcard` overlay，并移除旧安装遗留的手动 `dtoverlay=whisplay-soundcard` 配置。
+
 > ⚠️ **重要硬件警告（仅 A7Z）**  
 > 由于电路不兼容，Whisplay HAT 的物理按键在 Radxa Cubie A7Z 上**不可使用**。  
 > **请勿点击按键**，否则可能导致 A7Z 立即断电。
