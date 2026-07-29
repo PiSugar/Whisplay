@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import re
 import subprocess
 import threading
@@ -150,4 +152,3 @@ class InternalAppManager:
 
     def _strip_ansi(self, text: str) -> str:
         return re.sub(r"\x1b\[[0-9;]*m", "", text)
-

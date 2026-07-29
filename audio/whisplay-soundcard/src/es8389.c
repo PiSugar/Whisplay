@@ -610,6 +610,11 @@ static int es8389_component_probe(struct snd_soc_component *component)
 
 	snd_soc_component_set_drvdata(component, es8389);
 	es8389->regmap = dev_get_regmap(component->dev, NULL);
+	if (!es8389->regmap)
+		return -ENODEV;
+	if (device_property_read_bool(component->dev,
+				      "whisplay,a733-i2c-retry"))
+		snd_soc_component_init_regmap(component, es8389->regmap);
 
 	ret = device_property_read_u8(component->dev, "everest,mclk-src", &es8389->mclk_src);
 	if (ret != 0) {
@@ -672,6 +677,9 @@ static void es8389_component_remove(struct snd_soc_component *component)
 	regmap_write(es8389->regmap, ES8389_ANA_CTL1, 0x08);
 	regmap_write(es8389->regmap, ES8389_ISO_CTL, 0xC1);
 	regmap_write(es8389->regmap, ES8389_PULL_DOWN, 0x00);
+	if (device_property_read_bool(component->dev,
+				      "whisplay,a733-i2c-retry"))
+		snd_soc_component_exit_regmap(component);
 }
 
 static int es8389_suspend(struct snd_soc_component *component)

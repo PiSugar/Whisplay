@@ -36,7 +36,7 @@ detect_platform() {
         return 0
     fi
     if [[ "$model" == *"Cubie"* ]] || echo "$compat" | grep -qi "cubie-a7z"; then
-        echo "unknown"
+        echo "radxa_cubie_a7z"
         return 0
     fi
     if [[ "$model" == *"Radxa"* ]] || echo "$compat" | grep -qi "radxa"; then
@@ -48,6 +48,8 @@ detect_platform() {
 }
 
 install_build_deps() {
+    local platform_packages=()
+
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
 
@@ -58,13 +60,70 @@ install_build_deps() {
         fi
     fi
 
+    if [[ "$PLATFORM" == "radxa_cubie_a7z" ]]; then
+        platform_packages+=(kmod)
+    fi
+
     if apt-get install -y -qq "linux-headers-$(uname -r)" device-tree-compiler \
-            alsa-utils libasound2-plugins sox; then
+            alsa-utils libasound2-plugins sox "${platform_packages[@]}"; then
         return
     fi
 
     echo "  WARN: could not install kernel headers automatically." >&2
     echo "  Install headers manually, then re-run this script." >&2
+}
+
+ensure_wm8960_codec() {
+    local build_dir
+    local headers
+    local kernel_series
+    local module_path
+
+    [[ "$PLATFORM" == "radxa_cubie_a7z" ]] || return 0
+
+    module_path="$(find "/lib/modules/$(uname -r)" -name 'snd-soc-wm8960.ko*' \
+        -print -quit 2>/dev/null || true)"
+    if [[ -n "$module_path" ]]; then
+        depmod -a
+        echo "  WM8960 codec module available: $module_path"
+        return 0
+    fi
+
+    headers="/lib/modules/$(uname -r)/build"
+    if [[ ! -d "$headers" ]]; then
+        echo "Missing kernel headers required to build the A7Z WM8960 codec module." >&2
+        return 1
+    fi
+
+    if ! command -v wget >/dev/null 2>&1; then
+        apt-get install -y -qq wget
+    fi
+
+    build_dir="$(mktemp -d)"
+    kernel_series="$(uname -r | cut -d. -f1-2)"
+    echo "  Building WM8960 codec module for A7Z (Linux $kernel_series) ..."
+
+    if ! wget -q \
+        "https://raw.githubusercontent.com/torvalds/linux/v${kernel_series}/sound/soc/codecs/wm8960.c" \
+        -O "$build_dir/wm8960.c" ||
+       ! wget -q \
+        "https://raw.githubusercontent.com/torvalds/linux/v${kernel_series}/sound/soc/codecs/wm8960.h" \
+        -O "$build_dir/wm8960.h"; then
+        rm -rf "$build_dir"
+        echo "Failed to download the matching WM8960 codec source." >&2
+        return 1
+    fi
+
+    printf '%s\n' \
+        'obj-m += snd-soc-wm8960.o' \
+        'snd-soc-wm8960-objs := wm8960.o' \
+        >"$build_dir/Makefile"
+    make -C "$headers" M="$build_dir" modules
+    install -m 644 "$build_dir/snd-soc-wm8960.ko" \
+        "/lib/modules/$(uname -r)/kernel/sound/soc/codecs/"
+    rm -rf "$build_dir"
+    depmod -a
+    echo "  WM8960 codec module installed"
 }
 
 install_overlay() {
@@ -120,11 +179,73 @@ install_overlay() {
                 echo "  WARN: u-boot-update not found; verify /boot/extlinux/extlinux.conf manually." >&2
             fi
             ;;
+        radxa_cubie_a7z)
+            dts="$SRC/dts/whisplay-soundcard-radxa-cubie-a7z.dts"
+            dtbo="/boot/dtbo/whisplay-soundcard-radxa-cubie-a7z.dtbo"
+            mkdir -p /boot/dtbo
+            dtc -I dts -O dtb -@ -o "$dtbo" "$dts"
+
+            if [[ -f /boot/dtbo/sun60iw2p1-i2s0-2ch.dtbo ]]; then
+                mv /boot/dtbo/sun60iw2p1-i2s0-2ch.dtbo \
+                    /boot/dtbo/sun60iw2p1-i2s0-2ch.dtbo.disabled
+                echo "  Disabled conflicting I2S0 dummy-sound overlay"
+            fi
+            if [[ -f /boot/dtbo/wm8960-cubie-a7z.dtbo ]]; then
+                mv /boot/dtbo/wm8960-cubie-a7z.dtbo \
+                    /boot/dtbo/wm8960-cubie-a7z.dtbo.disabled
+                echo "  Disabled legacy Cubie A7Z WM8960 overlay"
+            fi
+
+            grep -q "i2c-dev" /etc/modules 2>/dev/null || echo "i2c-dev" >>/etc/modules
+            grep -q "snd-soc-wm8960" /etc/modules 2>/dev/null || echo "snd-soc-wm8960" >>/etc/modules
+            grep -q "snd-soc-whisplay-soundcard" /etc/modules 2>/dev/null || \
+                echo "snd-soc-whisplay-soundcard" >>/etc/modules
+
+            if command -v u-boot-update >/dev/null 2>&1; then
+                u-boot-update
+            else
+                echo "  WARN: u-boot-update not found; verify /boot/extlinux/extlinux.conf manually." >&2
+            fi
+            ;;
         *)
             echo "Unsupported platform for overlay install: $PLATFORM" >&2
             exit 1
             ;;
     esac
+}
+
+install_a7z_recovery() {
+    local recovery_script="/usr/local/sbin/whisplay-soundcard-a7z-recover"
+    local recovery_service="/etc/systemd/system/whisplay-soundcard-a7z-recover.service"
+
+    if [[ "$PLATFORM" != "radxa_cubie_a7z" ]]; then
+        return 0
+    fi
+
+    install -m 755 "$ROOT/scripts/recover-a7z-i2c.sh" "$recovery_script"
+    cat >"$recovery_service" <<'EOF'
+[Unit]
+Description=Whisplay Cubie A7Z TWI7 audio recovery
+After=systemd-modules-load.service local-fs.target
+Before=sound.target alsa-restore.service whisplay-soundcard-warmup.service whisplay-daemon.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/whisplay-soundcard-a7z-recover
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    if [[ "${WHISPLAY_A7Z_RECOVERY:-0}" == "1" ]]; then
+        systemctl enable whisplay-soundcard-a7z-recover.service >/dev/null
+        echo "  Cubie A7Z TWI7 boot recovery enabled"
+    else
+        systemctl disable --now whisplay-soundcard-a7z-recover.service \
+            >/dev/null 2>&1 || true
+        echo "  Cubie A7Z TWI7 recovery installed but disabled"
+        echo "  Set WHISPLAY_A7Z_RECOVERY=1 to enable it explicitly"
+    fi
 }
 
 migrate_legacy_alsa_refs() {
@@ -151,23 +272,28 @@ PLATFORM="${WHISPLAY_PLATFORM:-$(detect_platform)}"
 echo "Platform: $PLATFORM"
 echo
 
-echo "[1/6] Installing build dependencies ..."
+echo "[1/8] Installing build dependencies ..."
 install_build_deps
 
 echo
-echo "[2/6] Building snd-soc-whisplay-soundcard.ko ..."
+echo "[2/8] Ensuring platform codec dependencies ..."
+ensure_wm8960_codec
+
+echo
+echo "[3/8] Building snd-soc-whisplay-soundcard.ko ..."
 make -C "$SRC"
 
 echo
-echo "[3/6] Installing kernel module ..."
+echo "[4/8] Installing kernel module ..."
 KVER="$(uname -r)"
 install -m 644 "$SRC/snd-soc-whisplay-soundcard.ko" \
     "/lib/modules/${KVER}/kernel/sound/soc/codecs/"
 depmod -a
 
 echo
-echo "[4/6] Compiling and installing device-tree overlay ..."
+echo "[5/8] Compiling and installing device-tree overlay ..."
 install_overlay
+install_a7z_recovery
 
 sed -i '/snd-soc-wm8960-soundcard/d' /etc/modules 2>/dev/null || true
 systemctl disable --now wm8960-soundcard.service >/dev/null 2>&1 || true
@@ -177,6 +303,11 @@ rm -f /etc/systemd/system/sysinit.target.wants/wm8960-soundcard.service
 rm -f /etc/systemd/system/sysinit.target.wants/es8389-soundcard.service
 rm -f /etc/systemd/system/multi-user.target.wants/es8389-defaults.service
 rm -f /etc/systemd/system/es8389-defaults.service
+if [[ "$PLATFORM" == "radxa_cubie_a7z" ]]; then
+    systemctl disable --now wm8960-fix.service >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/wm8960-fix.service
+    rm -f /usr/local/bin/wm8960-fix.sh
+fi
 rm -f /etc/wireplumber/main.lua.d/51-es8389.lua
 rm -rf /etc/wm8960-soundcard /etc/es8389-soundcard
 if [ -L /var/lib/alsa/asound.state ]; then
@@ -186,13 +317,17 @@ if [ -L /var/lib/alsa/asound.state ]; then
 fi
 
 echo
-echo "[5/6] Installing ALSA configuration ..."
+echo "[6/8] Installing ALSA configuration ..."
 rm -f /etc/asound.conf
-install -m 644 "$CFG/asound.conf" /etc/asound.conf
+if [[ "$PLATFORM" == "radxa_cubie_a7z" ]]; then
+    install -m 644 "$CFG/asound-a7z.conf" /etc/asound.conf
+else
+    install -m 644 "$CFG/asound.conf" /etc/asound.conf
+fi
 migrate_legacy_alsa_refs
 
 echo
-echo "[6/7] Module options ..."
+echo "[7/8] Module options ..."
 if [[ "${WHISPLAY_CALIB_MODE:-0}" == "1" ]]; then
     echo 'options snd-soc-whisplay-soundcard skip_legacy_hide=1' \
         >/etc/modprobe.d/whisplay-calib.conf
@@ -205,7 +340,7 @@ else
 fi
 
 echo
-echo "[7/7] Installing boot defaults ..."
+echo "[8/8] Installing boot defaults ..."
 cat >/etc/systemd/system/whisplay-soundcard-warmup.service <<'EOF'
 [Unit]
 Description=Whisplay Sound Card boot setup
@@ -219,8 +354,16 @@ ExecStart=/bin/bash -lc 'for i in $(seq 1 30); do aplay -l 2>/dev/null | grep -q
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
-systemctl enable whisplay-soundcard-warmup.service >/dev/null
-echo "  Boot defaults enabled (speaker=80, mic=80)"
+if [[ "$PLATFORM" == "radxa_cubie_a7z" &&
+      "${WHISPLAY_A7Z_WARMUP:-0}" != "1" ]]; then
+    systemctl disable --now whisplay-soundcard-warmup.service \
+        >/dev/null 2>&1 || true
+    echo "  Cubie A7Z boot warmup installed but disabled"
+    echo "  Set WHISPLAY_A7Z_WARMUP=1 to enable it explicitly"
+else
+    systemctl enable whisplay-soundcard-warmup.service >/dev/null
+    echo "  Boot defaults enabled (speaker=80, mic=80)"
+fi
 
 echo
 echo "===================================="

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import select
 import struct
@@ -217,4 +219,3 @@ class ExternalKeyboardReader:
         if not chars:
             return
         self._callback(("char", chars[1] if self._shift_down else chars[0]))
-
