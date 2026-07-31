@@ -35,6 +35,12 @@
 #define snd_soc_rtd_to_cpu asoc_rtd_to_cpu
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
+#define whisplay_substream_to_rtd snd_soc_substream_to_rtd
+#else
+#define whisplay_substream_to_rtd asoc_substream_to_rtd
+#endif
+
 enum whisplay_chip_type whisplay_active_chip = WHISPLAY_CHIP_UNKNOWN;
 EXPORT_SYMBOL_GPL(whisplay_active_chip);
 
@@ -1177,7 +1183,7 @@ static int whisplay_dai_init(struct snd_soc_pcm_runtime *rtd)
 
 static int whisplay_dai_startup(struct snd_pcm_substream *substream)
 {
-	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
+	struct snd_soc_pcm_runtime *rtd = whisplay_substream_to_rtd(substream);
 
 	/*
 	 * The A733 BSP I2S path is validated at 48 kHz.  Constraining ALSA here
@@ -1257,7 +1263,7 @@ static int whisplay_a733_set_i2s_data_delay(struct snd_soc_dai *cpu_dai)
 static int whisplay_dai_hw_params(struct snd_pcm_substream *substream,
 				  struct snd_pcm_hw_params *params)
 {
-	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
+	struct snd_soc_pcm_runtime *rtd = whisplay_substream_to_rtd(substream);
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
 	const char *mclk_fs_property;

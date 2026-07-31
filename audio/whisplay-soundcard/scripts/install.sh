@@ -1,4 +1,5 @@
-#!/usr/bin/env bash
+#!/bin/sh
+[ -n "${BASH_VERSION:-}" ] || exec bash "$0" "$@"
 # Build, install and activate Whisplay unified sound card driver.
 # Supports ES8389 (0x10) and WM8960 (0x1a) auto-detection.
 #

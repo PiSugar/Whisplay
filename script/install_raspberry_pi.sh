@@ -1,4 +1,5 @@
-#!/usr/bin/env bash
+#!/bin/sh
+[ -n "${BASH_VERSION:-}" ] || exec bash "$0" "$@"
 #
 # Install the Whisplay unified sound card driver on Raspberry Pi.
 #
