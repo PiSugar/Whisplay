@@ -96,6 +96,15 @@ detect_platform() {
         echo "raspberry_pi"
         return 0
     fi
+    if echo "$compat" | grep -qi "raspberrypi,bcm\|brcm,bcm\|raspberrypi"; then
+        echo "raspberry_pi"
+        return 0
+    fi
+    if [[ "$(uname -r 2>/dev/null || true)" == *"rpt-rpi"* ]] && \
+            [[ -d /boot/firmware/overlays || -d /boot/overlays ]]; then
+        echo "raspberry_pi"
+        return 0
+    fi
     if [[ "$model" == *"Cubie"* ]] || echo "$compat" | grep -qi "cubie-a7z"; then
         echo "radxa_cubie_a7z"
         return 0
