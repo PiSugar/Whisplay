@@ -95,6 +95,11 @@ detect_platform() {
         echo "raspberry_pi"
         return 0
     fi
+    if [[ "$model" == *"OrangePi Zero2 W"* ]] || \
+       echo "$compat" | grep -qi "xunlong,orangepi-zero2w"; then
+        echo "orangepi_zero2w"
+        return 0
+    fi
     if [[ "$model" == *"Cubie"* ]] || echo "$compat" | grep -qi "cubie-a7z"; then
         echo "radxa_cubie_a7z"
         return 0
@@ -124,6 +129,12 @@ install_build_deps() {
         platform_packages+=(kmod)
     fi
 
+    if [[ "$PLATFORM" == "orangepi_zero2w" ]]; then
+        apt-get install -y -qq device-tree-compiler alsa-utils \
+            libasound2-plugins sox wget xz-utils make gcc kmod
+        return
+    fi
+
     if apt-get install -y -qq "linux-headers-$(uname -r)" device-tree-compiler \
             alsa-utils libasound2-plugins sox "${platform_packages[@]}"; then
         return
@@ -133,13 +144,47 @@ install_build_deps() {
     echo "  Install headers manually, then re-run this script." >&2
 }
 
+ensure_orangepi_headers() {
+    local archive
+    local expected_sha256
+    local headers_dir
+    local headers_url
+    local kver
+
+    [[ "$PLATFORM" == "orangepi_zero2w" ]] || return 0
+    kver="$(uname -r)"
+    [[ -d "/lib/modules/${kver}/build" ]] && return 0
+
+    if [[ "$kver" != "6.1.31-sun50iw9" ]]; then
+        echo "Orange Pi OS headers are only available here for 6.1.31-sun50iw9; found ${kver}." >&2
+        echo "Install matching kernel headers and re-run this installer." >&2
+        return 1
+    fi
+
+    archive="$(mktemp)"
+    headers_dir="/usr/src/kheaders-6.1.31-sun50iw9"
+    headers_url="https://raw.githubusercontent.com/MJD19994/WM8960_AudioHAT_OrangePiZero_Drivers/58a1ea03d6efb6c59f66a291492517b26342a091/dkms/kheaders-6.1.31-sun50iw9.tar.xz"
+    expected_sha256="82d0569483033d86e4335cce914bb6bae94ea57aeff5e233bcc8dd4c890f76da"
+
+    echo "  Downloading matching Orange Pi OS 6.1.31 kernel headers ..."
+    wget -q --show-progress -O "$archive" "$headers_url"
+    echo "${expected_sha256}  ${archive}" | sha256sum -c -
+    mkdir -p /usr/src
+    rm -rf "$headers_dir"
+    tar -xJf "$archive" -C /usr/src
+    rm -f "$archive"
+    ln -sfn "$headers_dir" "/lib/modules/${kver}/build"
+    echo "  Orange Pi kernel headers installed: $headers_dir"
+}
+
 ensure_wm8960_codec() {
     local build_dir
     local headers
     local kernel_series
     local module_path
 
-    [[ "$PLATFORM" == "radxa_cubie_a7z" ]] || return 0
+    [[ "$PLATFORM" == "radxa_cubie_a7z" || \
+       "$PLATFORM" == "orangepi_zero2w" ]] || return 0
 
     module_path="$(find "/lib/modules/$(uname -r)" -name 'snd-soc-wm8960.ko*' \
         -print -quit 2>/dev/null || true)"
@@ -161,14 +206,21 @@ ensure_wm8960_codec() {
 
     build_dir="$(mktemp -d)"
     kernel_series="$(uname -r | cut -d. -f1-2)"
-    echo "  Building WM8960 codec module for A7Z (Linux $kernel_series) ..."
+    echo "  Building WM8960 codec module for $PLATFORM (Linux $kernel_series) ..."
 
-    if ! wget -q \
-        "https://raw.githubusercontent.com/torvalds/linux/v${kernel_series}/sound/soc/codecs/wm8960.c" \
-        -O "$build_dir/wm8960.c" ||
-       ! wget -q \
-        "https://raw.githubusercontent.com/torvalds/linux/v${kernel_series}/sound/soc/codecs/wm8960.h" \
-        -O "$build_dir/wm8960.h"; then
+    if [[ "$PLATFORM" == "orangepi_zero2w" ]]; then
+        local source_base
+        source_base="https://raw.githubusercontent.com/MJD19994/WM8960_AudioHAT_OrangePiZero_Drivers/58a1ea03d6efb6c59f66a291492517b26342a091/dkms"
+        wget -q -O "$build_dir/wm8960.c" "$source_base/wm8960.c"
+        wget -q -O "$build_dir/wm8960.h" "$source_base/wm8960.h"
+        echo 'fc7ce953f3af8709a45d53c8f486cbf3c6fd1d1f7dd7f72d0693e8546cb99b19  '"$build_dir/wm8960.c" | sha256sum -c -
+        echo '31dbe5dc88d92aaae880633b50360aceff2e5035f20d9c6141ba618e6fe82859  '"$build_dir/wm8960.h" | sha256sum -c -
+    elif ! wget -q \
+          "https://raw.githubusercontent.com/torvalds/linux/v${kernel_series}/sound/soc/codecs/wm8960.c" \
+          -O "$build_dir/wm8960.c" ||
+         ! wget -q \
+          "https://raw.githubusercontent.com/torvalds/linux/v${kernel_series}/sound/soc/codecs/wm8960.h" \
+          -O "$build_dir/wm8960.h"; then
         rm -rf "$build_dir"
         echo "Failed to download the matching WM8960 codec source." >&2
         return 1
@@ -178,7 +230,7 @@ ensure_wm8960_codec() {
         'obj-m += snd-soc-wm8960.o' \
         'snd-soc-wm8960-objs := wm8960.o' \
         >"$build_dir/Makefile"
-    make -C "$headers" M="$build_dir" modules
+    make -C "$headers" M="$build_dir" KBUILD_MODPOST_WARN=1 modules
     install -m 644 "$build_dir/snd-soc-wm8960.ko" \
         "/lib/modules/$(uname -r)/kernel/sound/soc/codecs/"
     rm -rf "$build_dir"
@@ -261,6 +313,28 @@ install_overlay() {
                 echo "  WARN: u-boot-update not found; verify /boot/extlinux/extlinux.conf manually." >&2
             fi
             ;;
+        orangepi_zero2w)
+            dts="$SRC/dts/whisplay-soundcard-orangepi-zero2w.dts"
+            dtbo="/boot/overlay-user/whisplay-soundcard-orangepi-zero2w.dtbo"
+            boot_cfg="/boot/orangepiEnv.txt"
+            mkdir -p /boot/overlay-user
+            dtc -I dts -O dtb -@ -o "$dtbo" "$dts"
+
+            [[ -f "$boot_cfg" ]] || {
+                echo "Missing Orange Pi boot environment: $boot_cfg" >&2
+                exit 1
+            }
+            if grep -q '^user_overlays=' "$boot_cfg"; then
+                if ! awk '$1 == "user_overlays" { for (i = 2; i <= NF; i++) if ($i == "whisplay-soundcard-orangepi-zero2w") found = 1 } END { exit !found }' FS='[= ]' "$boot_cfg"; then
+                    sed -i '/^user_overlays=/ s/$/ whisplay-soundcard-orangepi-zero2w/' "$boot_cfg"
+                fi
+            else
+                echo 'user_overlays=whisplay-soundcard-orangepi-zero2w' >>"$boot_cfg"
+            fi
+            grep -q '^i2c-dev$' /etc/modules 2>/dev/null || echo 'i2c-dev' >>/etc/modules
+            grep -q '^snd-soc-whisplay-soundcard$' /etc/modules 2>/dev/null || \
+                echo 'snd-soc-whisplay-soundcard' >>/etc/modules
+            ;;
         *)
             echo "Unsupported platform for overlay install: $PLATFORM" >&2
             exit 1
@@ -331,11 +405,18 @@ install_build_deps
 
 echo
 echo "[2/8] Ensuring platform codec dependencies ..."
+ensure_orangepi_headers
 ensure_wm8960_codec
 
 echo
 echo "[3/8] Building snd-soc-whisplay-soundcard.ko ..."
-make -C "$SRC"
+if [[ "$PLATFORM" == "orangepi_zero2w" ]]; then
+    # The vendor's 6.1.31 headers archive has an empty Module.symvers.  The
+    # symbols are exported by the running kernel, but modpost cannot see them.
+    make -C "$SRC" KBUILD_MODPOST_WARN=1
+else
+    make -C "$SRC"
+fi
 
 echo
 echo "[4/8] Installing kernel module ..."

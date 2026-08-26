@@ -12,6 +12,7 @@
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/of.h>
+#include <linux/of_platform.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/mutex.h>
@@ -106,6 +107,15 @@ static void whisplay_boot_work_fn(struct work_struct *work)
 #define WHISPLAY_A733_PLL_RATE 24576000U
 #define WHISPLAY_A733_SLOTS 2
 #define WHISPLAY_A733_SLOT_WIDTH 32
+#define WHISPLAY_H616_RATE 48000U
+#define WHISPLAY_H616_PLL_RATE 98304000U
+#define WHISPLAY_H616_MODULE_RATE 98304000U
+#define WHISPLAY_H616_SLOTS 2
+#define WHISPLAY_H616_SLOT_WIDTH 32
+#define WHISPLAY_H616_APBIF0_RX_ROUTE 0x118
+#define WHISPLAY_H616_I2S0_RX_ROUTE 0x220
+#define WHISPLAY_H616_APBIF0_FROM_I2S0 BIT(27)
+#define WHISPLAY_H616_I2S0_FROM_APBIF0 BIT(31)
 #define WHISPLAY_A733_I2S_TX0CHSEL 0x34
 #define WHISPLAY_A733_I2S_TX1CHSEL 0x38
 #define WHISPLAY_A733_I2S_TX2CHSEL 0x3c
@@ -1254,6 +1264,46 @@ static int whisplay_a733_set_i2s_data_delay(struct snd_soc_dai *cpu_dai)
 	return 0;
 }
 
+/*
+ * Orange Pi's 6.1.31 BSP does not initialize the AHUB crossbar for an
+ * overlay-created platform instance.  Route APBIF0 -> I2S0 for playback and
+ * I2S0 -> APBIF0 for capture, matching snd_soc_sunxi_ahub_init().
+ */
+static int whisplay_h616_set_ahub_routes(void)
+{
+	struct platform_device *ahub_pdev;
+	struct device_node *ahub_np;
+	struct regmap *regmap;
+	int ret;
+
+	ahub_np = of_find_compatible_node(NULL, NULL,
+					  "allwinner,sunxi-snd-plat-ahub_dam");
+	if (!ahub_np)
+		return -ENODEV;
+	ahub_pdev = of_find_device_by_node(ahub_np);
+	of_node_put(ahub_np);
+	if (!ahub_pdev)
+		return -EPROBE_DEFER;
+
+	regmap = dev_get_regmap(&ahub_pdev->dev, NULL);
+	if (!regmap) {
+		ret = -ENODEV;
+		goto out_put_device;
+	}
+
+	ret = regmap_write(regmap, WHISPLAY_H616_I2S0_RX_ROUTE,
+			   WHISPLAY_H616_I2S0_FROM_APBIF0);
+	if (ret)
+		goto out_put_device;
+
+	ret = regmap_write(regmap, WHISPLAY_H616_APBIF0_RX_ROUTE,
+			   WHISPLAY_H616_APBIF0_FROM_I2S0);
+
+out_put_device:
+	put_device(&ahub_pdev->dev);
+	return ret;
+}
+
 static int whisplay_dai_hw_params(struct snd_pcm_substream *substream,
 				  struct snd_pcm_hw_params *params)
 {
@@ -1266,11 +1316,63 @@ static int whisplay_dai_hw_params(struct snd_pcm_substream *substream,
 	unsigned int sysclk;
 	u32 mclk_fs;
 	bool sunxi_a733;
+	bool sunxi_h616;
 	int ret;
 
 	sunxi_a733 = of_property_read_bool(rtd->card->dev->of_node,
 					  "whisplay,sunxi-a733-i2s");
+	sunxi_h616 = of_property_read_bool(rtd->card->dev->of_node,
+					  "whisplay,sunxi-h616-ahub");
 	rate = params_rate(params);
+
+	/*
+	 * The H616/H618 vendor AHUB DAI needs the same explicit clock and TDM
+	 * sequence as its stock sunxi machine driver.  The Zero 2W header does
+	 * not route PI0/MCLK to the HAT, so keep MCLK disabled while driving
+	 * BCLK/LRCK from the vendor driver's 4 x 24.576 MHz PLL rate.
+	 */
+	if (sunxi_h616) {
+		if (rate != WHISPLAY_H616_RATE)
+			return -EINVAL;
+
+		ret = snd_soc_dai_set_pll(cpu_dai, substream->stream, 0,
+					  WHISPLAY_H616_PLL_RATE,
+					  WHISPLAY_H616_MODULE_RATE);
+		if (ret)
+			return dev_err_probe(rtd->dev, ret,
+					     "Failed to set H616 AHUB PLL\n");
+
+		ret = snd_soc_dai_set_sysclk(cpu_dai, 0, 0,
+					     SND_SOC_CLOCK_OUT);
+		if (ret && ret != -ENOTSUPP)
+			return ret;
+
+		bclk_ratio = WHISPLAY_H616_PLL_RATE /
+			     (rate * WHISPLAY_H616_SLOTS *
+			      WHISPLAY_H616_SLOT_WIDTH);
+		ret = snd_soc_dai_set_bclk_ratio(cpu_dai, bclk_ratio);
+		if (ret && ret != -ENOTSUPP)
+			return ret;
+
+		ret = snd_soc_dai_set_fmt(cpu_dai, rtd->dai_link->dai_fmt);
+		if (ret && ret != -ENOTSUPP)
+			return ret;
+		ret = snd_soc_dai_set_fmt(codec_dai, rtd->dai_link->dai_fmt);
+		if (ret && ret != -ENOTSUPP)
+			return ret;
+
+		ret = snd_soc_dai_set_tdm_slot(cpu_dai, 0, 0,
+					       WHISPLAY_H616_SLOTS,
+					       WHISPLAY_H616_SLOT_WIDTH);
+		if (ret && ret != -ENOTSUPP)
+			return ret;
+
+		ret = whisplay_h616_set_ahub_routes();
+		if (ret)
+			return dev_err_probe(rtd->dev, ret,
+					     "Failed to route H616 AHUB0\n");
+		return 0;
+	}
 
 	if (whisplay_active_chip == WHISPLAY_CHIP_WM8960)
 		mclk_fs_property = "whisplay,wm8960-mclk-fs";

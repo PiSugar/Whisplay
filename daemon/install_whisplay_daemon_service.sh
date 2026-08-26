@@ -13,6 +13,28 @@ APPS_DIR="$DAEMON_HOME/app"
 SETTINGS_PATH="$DAEMON_HOME/settings.json"
 PYTHON_BIN="$(command -v python3)"
 
+configure_orangepi_device_access() {
+  local compat=""
+
+  if [ -r /proc/device-tree/compatible ]; then
+    compat="$(tr '\0' '\n' </proc/device-tree/compatible 2>/dev/null || true)"
+  fi
+  echo "$compat" | grep -qi 'xunlong,orangepi-zero2w' || return 0
+
+  echo "Configuring Orange Pi GPIO/SPI access for $TARGET_USER..."
+  getent group gpio >/dev/null 2>&1 || sudo groupadd --system gpio
+  sudo usermod -aG gpio "$TARGET_USER"
+  sudo tee /etc/udev/rules.d/60-whisplay-orangepi.rules >/dev/null <<'EOF'
+SUBSYSTEM=="gpio", KERNEL=="gpiochip[0-9]*", GROUP="gpio", MODE="0660"
+SUBSYSTEM=="spidev", KERNEL=="spidev[0-9]*.[0-9]*", GROUP="gpio", MODE="0660"
+EOF
+  sudo udevadm control --reload-rules
+  sudo udevadm trigger --subsystem-match=gpio || true
+  sudo udevadm trigger --subsystem-match=spidev || true
+  sudo chgrp gpio /dev/gpiochip* /dev/spidev* 2>/dev/null || true
+  sudo chmod g+rw /dev/gpiochip* /dev/spidev* 2>/dev/null || true
+}
+
 if [ -z "$PYTHON_BIN" ]; then
   echo "Error: python3 not found."
   exit 1
@@ -34,6 +56,8 @@ if [ "$TARGET_USER" = "root" ] && [ -z "${SUDO_USER:-}" ]; then
 fi
 
 echo "Installing whisplay-daemon.service for user: $TARGET_USER"
+
+configure_orangepi_device_access
 
 install -d -m 0755 "$APPS_DIR"
 
