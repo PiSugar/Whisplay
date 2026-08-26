@@ -8,9 +8,9 @@ This project provides comprehensive driver support for the **PiSugar Whisplay Ha
 
 **Supported Platforms:**
 - Raspberry Pi (all models with 40-pin header)
-- Orange Pi Zero 2W (H618; official Debian Bookworm 1.0.2 / Linux 6.1.31)
-- Radxa ZERO 3W (RK3566)
-- Radxa Cubie A7Z (Allwinner A733)
+- [Orange Pi Zero 2W](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-2W.html) (H618; official Debian Bookworm 1.0.2 / Linux 6.1.31)
+- [Radxa ZERO 3W](https://radxa.com/products/zeros/zero3w/) (RK3566)
+- [Radxa Cubie A7Z](https://radxa.com/products/cubie/a7z/) (Allwinner A733)
 
 More Details please refer to [Whisplay HAT Docs](https://docs.pisugar.com/docs/product-wiki/whisplay/intro)
 

@@ -8,9 +8,9 @@
 
 **支持平台：**
 - Raspberry Pi（所有带 40-pin 排针的型号）
-- Orange Pi Zero 2W（H618；官方 Debian Bookworm 1.0.2 / Linux 6.1.31）
-- Radxa ZERO 3W (RK3566)
-- Radxa Cubie A7Z (Allwinner A733)
+- [Orange Pi Zero 2W](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-2W.html)（H618；官方 Debian Bookworm 1.0.2 / Linux 6.1.31）
+- [Radxa ZERO 3W](https://radxa.com/products/zeros/zero3w/) (RK3566)
+- [Radxa Cubie A7Z](https://radxa.com/products/cubie/a7z/) (Allwinner A733)
 
 更多详细信息请参考 [Whisplay HAT 文档](https://docs.pisugar.com/docs/product-wiki/whisplay/intro)
 
