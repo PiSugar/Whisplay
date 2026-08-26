@@ -5,7 +5,9 @@
   "launch_command": "python3 jump_game.py",
   "cwd": "__EXAMPLE_DIR__",
   "env": {
-    "WHISPLAY_APP_ID": "whisplay-jump"
+    "WHISPLAY_APP_ID": "whisplay-jump",
+    "SDL_AUDIODRIVER": "alsa",
+    "AUDIODEV": "whisplaysound"
   },
   "exit_gesture": "quad_click",
   "priority": 25,

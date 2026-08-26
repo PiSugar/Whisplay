@@ -18,6 +18,11 @@ detect_platform() {
     echo "raspberry_pi"
     return 0
   fi
+  if [[ "$model" == *"OrangePi Zero2 W"* ]] || \
+      echo "$compat" | grep -qi "xunlong,orangepi-zero2w"; then
+    echo "orangepi_zero2w"
+    return 0
+  fi
   if echo "$compat" | grep -qi "cubie-a7z"; then
     echo "radxa_cubie_a7z"
     return 0
@@ -40,12 +45,16 @@ case "$platform" in
   radxa_cubie_a7z)
     exec bash "$SCRIPT_DIR/script/install_radxa_cubie_a7z.sh" "$@"
     ;;
+  orangepi_zero2w)
+    exec bash "$SCRIPT_DIR/script/install_orangepi_zero2w.sh" "$@"
+    ;;
   *)
     echo "Unsupported or unknown platform."
     echo "Use one of these manually if needed:"
     echo "  script/install_raspberry_pi.sh"
     echo "  script/install_radxa_zero3w.sh"
     echo "  script/install_radxa_cubie_a7z.sh"
+    echo "  script/install_orangepi_zero2w.sh"
     exit 1
     ;;
 esac

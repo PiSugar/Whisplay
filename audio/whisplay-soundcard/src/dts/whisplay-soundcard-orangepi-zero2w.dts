@@ -1,0 +1,140 @@
+/*
+ * Whisplay unified sound card overlay for Orange Pi Zero 2W (H618).
+ *
+ * Header wiring:
+ *   PIN_3  SDA  -> I2C1_SDA (PI8)
+ *   PIN_5  SCL  -> I2C1_SCL (PI7)
+ *   PIN_12 BCLK -> I2S0_BCLK (PI1)
+ *   PIN_35 LRCK -> I2S0_LRCK (PI2)
+ *   PIN_38 SDI  -> I2S0_DIN0 (PI4)
+ *   PIN_40 SDO  -> I2S0_DOUT0 (PI3)
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "xunlong,orangepi-zero2w", "allwinner,sun50i-h616";
+
+	fragment@0 {
+		target = <&pio>;
+		__overlay__ {
+			whisplay_i2s0_clk_pins: whisplay-i2s0-clk-pins {
+				pins = "PI1", "PI2";
+				function = "i2s0";
+				drive-strength = <20>;
+				bias-disable;
+			};
+
+			whisplay_i2s0_dout_pin: whisplay-i2s0-dout-pin {
+				pins = "PI3";
+				function = "i2s0_dout0";
+				drive-strength = <20>;
+				bias-disable;
+			};
+
+			whisplay_i2s0_din_pin: whisplay-i2s0-din-pin {
+				pins = "PI4";
+				function = "i2s0_din0";
+				drive-strength = <20>;
+				bias-disable;
+			};
+		};
+	};
+
+	fragment@1 {
+		target-path = "/soc";
+		__overlay__ {
+			whisplay_ahub0: whisplay-ahub0 {
+				#sound-dai-cells = <0>;
+				compatible = "allwinner,sunxi-snd-plat-ahub";
+				apb_num = <0>;
+				dmas = <&dma 3>, <&dma 3>;
+				dma-names = "tx", "rx";
+				playback_cma = <128>;
+				capture_cma = <128>;
+				tx_fifo_size = <128>;
+				rx_fifo_size = <128>;
+				tdm_num = <0>;
+				tx_pin = <0>;
+				rx_pin = <0>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&whisplay_i2s0_clk_pins
+					     &whisplay_i2s0_dout_pin
+					     &whisplay_i2s0_din_pin>;
+				status = "okay";
+			};
+		};
+	};
+
+	fragment@2 {
+		target-path = "/";
+		__overlay__ {
+			es8389_mclk: es8389-mclk {
+				compatible = "fixed-clock";
+				#clock-cells = <0>;
+				clock-frequency = <24576000>;
+				clock-output-names = "es8389-mclk";
+			};
+
+			es8389_vddd: es8389-vddd {
+				compatible = "regulator-fixed";
+				regulator-name = "es8389-vddd";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-always-on;
+			};
+
+			es8389_vdda: es8389-vdda {
+				compatible = "regulator-fixed";
+				regulator-name = "es8389-vdda";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-always-on;
+			};
+
+			whisplay_sound: whisplay-sound {
+				compatible = "pisugar,whisplay-soundcard";
+				i2s-controller = <&whisplay_ahub0>;
+				whisplay,es8389-codec = <&codec_es8389>;
+				whisplay,es8389-sysclk = <24576000>;
+				whisplay,wm8960-codec = <&codec_wm8960>;
+				whisplay,sunxi-h616-ahub;
+				whisplay,force-48k;
+				whisplay,no-continuous-clock;
+				status = "okay";
+			};
+		};
+	};
+
+	fragment@3 {
+		target = <&i2c1>;
+		__overlay__ {
+			pinctrl-names = "default";
+			pinctrl-0 = <&i2c1_pi_pins>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			codec_es8389: whisplay@10 {
+				compatible = "pisugar,whisplay";
+				reg = <0x10>;
+				#sound-dai-cells = <0>;
+				clocks = <&es8389_mclk>;
+				clock-names = "mclk";
+				vddd-supply = <&es8389_vddd>;
+				vdda-supply = <&es8389_vdda>;
+				everest,mclk-src = /bits/ 8 <0x40>;
+				status = "okay";
+			};
+
+			codec_wm8960: wm8960@1a {
+				compatible = "wlf,wm8960";
+				reg = <0x1a>;
+				#sound-dai-cells = <0>;
+				wlf,shared-lrclk;
+				status = "okay";
+			};
+		};
+	};
+};

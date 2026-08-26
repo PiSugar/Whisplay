@@ -8,6 +8,7 @@ This project provides comprehensive driver support for the **PiSugar Whisplay Ha
 
 **Supported Platforms:**
 - Raspberry Pi (all models with 40-pin header)
+- Orange Pi Zero 2W (H618; official Debian Bookworm 1.0.2 / Linux 6.1.31)
 - Radxa ZERO 3W (RK3566)
 - Radxa Cubie A7Z (Allwinner A733)
 
@@ -140,13 +141,14 @@ The repo root is organized by responsibility:
   * **Install result**: the installer writes `~/.whisplay-daemon/settings.json` and seeds the default example app JSON files into `~/.whisplay-daemon/app/`
 #### 2. Unified Audio Driver
 
-  * **Source**: Raspberry Pi, Radxa ZERO 3W, and Radxa Cubie A7Z use the bundled unified Whisplay sound card driver in `audio/whisplay-soundcard/`, compatible with WM8960 and ES8389 codec variants.
+  * **Source**: Raspberry Pi, Orange Pi Zero 2W, Radxa ZERO 3W, and Radxa Cubie A7Z use the bundled unified Whisplay sound card driver in `audio/whisplay-soundcard/`, compatible with WM8960 and ES8389 codec variants.
 
   * **Legacy driver**: Older driver support is kept on the `support/wm8960` branch. If you need the legacy driver, check out that branch before installing.
 
   * **Installation**:
     - **Auto-detect**: Run `install_driver.sh`
     - **Raspberry Pi**: Run `script/install_raspberry_pi.sh`
+    - **Orange Pi Zero 2W**: Run `script/install_orangepi_zero2w.sh`
     - **Radxa ZERO 3W**: Run `script/install_radxa_zero3w.sh`
     - **Radxa Cubie A7Z**: Run `script/install_radxa_cubie_a7z.sh`
 
@@ -154,6 +156,8 @@ The repo root is organized by responsibility:
     sudo bash install_driver.sh
     # Or run a platform-specific installer:
     sudo bash script/install_raspberry_pi.sh
+    # For Orange Pi Zero 2W:
+    sudo bash script/install_orangepi_zero2w.sh
     # For Radxa ZERO 3W:
     sudo bash script/install_radxa_zero3w.sh
     # For Radxa Cubie A7Z:
@@ -162,10 +166,13 @@ The repo root is organized by responsibility:
 
 #### 3. Bundled Unified Sound Card Driver
 
-  * `audio/whisplay-soundcard/` - unified driver source, install scripts, ALSA config, and platform DTS overlays. All three platform installers build and install it directly from this repository.
+  * `audio/whisplay-soundcard/` - unified driver source, install scripts, ALSA config, and platform DTS overlays. The platform installers build and install it directly from this repository.
 
-#### 4. Device Tree Overlays (Radxa only)
+#### 4. Device Tree Overlays
 
+  * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-orangepi-zero2w.dts` - unified H618 overlay using I2C1 on pins 3/5 and AHUB/I2S0 on pins 12/35/38/40. The installer also enables the official `pi-i2c1` and `spi1-cs0-spidev` overlays (SPI1 CS0 on header pins 19/21/23/24) and adds the Whisplay user overlay to `/boot/orangepiEnv.txt`.
+  * **Orange Pi OS 1.0.2 headers**: the vendor image does not publish an installable headers package. On exactly `6.1.31-sun50iw9`, the installer downloads a pinned, checksum-verified headers archive so it can build the unified module. Other Orange Pi kernel versions must provide matching headers in `/lib/modules/$(uname -r)/build`.
+  * **Orange Pi audio constraint**: the H618 AHUB path runs at 48 kHz with two 32-bit slots. The unified driver programs the vendor PLL/TDM sequence and the missing APBIF0 ↔ I2S0 crossbar routes required by the official 6.1.31 BSP.
   * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-radxa-zero3w.dts` - unified DT overlay for WM8960 and ES8389 codec variants on Radxa ZERO 3W (RK3566), configuring I2C3 and I2S3.
   * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-radxa-cubie-a7z.dts` - unified DT overlay for WM8960 and ES8389 codec variants on Radxa Cubie A7Z (Allwinner A733), configuring TWI7 and I2S0.
   * **Cubie A7Z audio constraints**: the vendor I2S0 path is constrained to 48 kHz with two 32-bit slots. The unified machine driver also applies the A733 vendor-specific one-bit I2S TX/RX data delay so signed capture samples remain aligned.

@@ -21,6 +21,8 @@ def _detect_platform():
             model = f.read().strip('\0').strip()
             if "Raspberry" in model:
                 return "rpi", model
+            elif "OrangePi Zero2 W" in model:
+                return "orangepi", model
             elif "Radxa" in model:
                 return "radxa", model
     except Exception:
@@ -34,6 +36,8 @@ def _detect_platform():
                 parts = compat.split('\0')
                 model = parts[0] if parts else "Unknown Radxa"
                 return "radxa", model
+            if "xunlong,orangepi-zero2w" in compat.lower():
+                return "orangepi", "OrangePi Zero2 W"
     except Exception:
         pass
     return "unknown", "Unknown"
@@ -85,6 +89,19 @@ RADXA_CUBIE_A7Z_PIN_MAP = {
     26: (0, 110),  27: (0, 113),  28: (0, 112),  29: (0, 34),
     31: (0, 35),   32: (1, 37),   33: (1, 35),   35: (0, 38),
     36: (0, 36),   37: (1, 36),   38: (0, 40),   40: (0, 39),
+}
+
+# Orange Pi Zero 2W (Allwinner H618), verified against the official
+# Orange Pi OS 1.0.2 wiringPi pin table.  H616/H618 PIO line offsets use
+# PA=0, PB=32, ..., PH=224, PI=256 on gpiochip0.
+ORANGEPI_ZERO2W_PIN_MAP = {
+    3: (0, 264),   5: (0, 263),   7: (0, 269),   8: (0, 224),
+    10: (0, 225),  11: (0, 226),  12: (0, 257),  13: (0, 227),
+    15: (0, 261),  16: (0, 270),  18: (0, 228),  19: (0, 231),
+    21: (0, 232),  22: (0, 262),  23: (0, 230),  24: (0, 229),
+    26: (0, 233),  27: (0, 266),  28: (0, 265),  29: (0, 256),
+    31: (0, 271),  32: (0, 267),  33: (0, 268),  35: (0, 258),
+    36: (0, 76),   37: (0, 272),  38: (0, 260),  40: (0, 259),
 }
 
 
@@ -272,6 +289,11 @@ class WhisplayBoard:
                 self._spi_bus = 3   # SPI3, CS0 (RK3566 Radxa Zero 3W)
                 self._spi_cs = 0
                 self._spi_speed = 48_000_000
+        elif self.platform == "orangepi":
+            self._pin_map = ORANGEPI_ZERO2W_PIN_MAP
+            self._spi_bus = 1   # SPI1, CS0 (PH5-PH8 on the 40-pin header)
+            self._spi_cs = 0
+            self._spi_speed = 48_000_000
         else:
             raise RuntimeError(
                 f"Unsupported platform: {self.platform}\n"
@@ -393,6 +415,8 @@ class WhisplayBoard:
                     self.backlight_mode = True  # Use PWM mode
             elif self.platform == "radxa":
                 # Radxa uses software PWM mode
+                self.backlight_mode = True
+            elif self.platform == "orangepi":
                 self.backlight_mode = True
             else:
                 self.backlight_mode = True
