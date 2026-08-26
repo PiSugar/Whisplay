@@ -5,7 +5,9 @@
   "launch_command": "python3 flappy_bird.py",
   "cwd": "__EXAMPLE_DIR__",
   "env": {
-    "WHISPLAY_APP_ID": "whisplay-flappy-bird"
+    "WHISPLAY_APP_ID": "whisplay-flappy-bird",
+    "SDL_AUDIODRIVER": "alsa",
+    "AUDIODEV": "whisplaysound"
   },
   "exit_gesture": "long_press",
   "priority": 20,

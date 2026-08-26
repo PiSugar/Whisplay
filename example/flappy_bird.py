@@ -169,6 +169,11 @@ def setup_audio_mixer():
     card = find_wm8960_card()
     if card is None:
         return
+    # Desktop images may install a PulseAudio override for the ALSA default
+    # device.  The daemon has no desktop PulseAudio session, so make SDL use
+    # the Whisplay ALSA PCM explicitly instead of silently playing to Pulse.
+    os.environ["SDL_AUDIODRIVER"] = "alsa"
+    os.environ["AUDIODEV"] = "whisplaysound"
     commands = [
         ["amixer", "-c", card, "cset", "name=speaker", "80"],
         ["amixer", "-c", card, "sset", "Left Output Mixer PCM", "on"],
@@ -216,8 +221,9 @@ class SoundEffects:
             pygame.mixer.init()
             self.enabled = True
             self._load()
-        except Exception:
+        except Exception as exc:
             self.enabled = False
+            print(f"Flappy Bird audio disabled: {exc}", file=sys.stderr)
 
     def _make_sound(self, name: str, frequency: float, duration_sec: float, volume: float, shape: str = "sine"):
         path = os.path.join(tempfile.gettempdir(), f"whisplay-{name}.wav")

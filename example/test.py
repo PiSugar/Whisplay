@@ -173,7 +173,7 @@ class RunTestFlow:
         card = str(self.card_index)
         unified_commands = [
             ["amixer", "-c", card, "cset", "name=speaker", "80"],
-            ["amixer", "-c", card, "cset", "name=mic", "50"],
+            ["amixer", "-c", card, "cset", "name=mic", "80"],
         ]
         commands = [
             ["amixer", "-c", card, "sset", "Left Output Mixer PCM", "on"],
