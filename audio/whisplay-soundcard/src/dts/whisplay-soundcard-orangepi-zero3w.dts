@@ -1,0 +1,170 @@
+/*
+ * Whisplay sound card overlay for Orange Pi Zero 3W (Allwinner A733).
+ *
+ * Header routing:
+ *   pins 3/5       TWI0 SDA/SCL (PB3/PB2)
+ *   pins 12/35     I2S0 BCLK/LRCK (PB5/PB6)
+ *   pins 38/40     I2S0 DIN/DOUT (PB8/PB7)
+ *
+ * PB4/I2S0_MCLK is deliberately not claimed: it is header pin 7 and the
+ * Whisplay LCD uses that pin for reset. The codec uses a fixed logical clock
+ * and the A733 controller operates without exporting MCLK to the header.
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	metadata {
+		title = "Enable the unified Whisplay sound card on Orange Pi Zero 3W";
+		compatible = "xunlong,orangepi-zero3w", "allwinner,sun60i-a733";
+		category = "misc";
+		exclusive = "twi0", "i2s0_plat", "i2s0_mach",
+			    "PB5", "PB6", "PB8", "PB7";
+		description = "Enable WM8960 or ES8389 auto-detection on TWI0 and I2S0.";
+	};
+
+	fragment@0 {
+		target-path = "/";
+		__overlay__ {
+			es8389_mclk: es8389-mclk {
+				compatible = "fixed-clock";
+				#clock-cells = <0>;
+				clock-frequency = <12288000>;
+				clock-output-names = "es8389-mclk";
+			};
+
+			es8389_vddd: es8389-vddd {
+				compatible = "regulator-fixed";
+				regulator-name = "es8389-vddd";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+			};
+
+			es8389_vdda: es8389-vdda {
+				compatible = "regulator-fixed";
+				regulator-name = "es8389-vdda";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+			};
+
+			whisplay_sound: whisplay-sound {
+				compatible = "pisugar,whisplay-soundcard";
+				i2s-controller = <&i2s0_plat>;
+				whisplay,es8389-codec = <&codec_es8389>;
+				whisplay,es8389-sysclk = <12288000>;
+				whisplay,es8389-mclk-fs = <256>;
+				whisplay,wm8960-codec = <&codec_wm8960>;
+				whisplay,wm8960-sysclk = <12288000>;
+				whisplay,wm8960-mclk-fs = <256>;
+				whisplay,wm8960-bound-detect;
+				whisplay,sunxi-a733-i2s;
+				whisplay,force-48k;
+				whisplay,no-continuous-clock;
+				status = "okay";
+			};
+		};
+	};
+
+	fragment@1 {
+		target = <&twi0>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			clock-frequency = <100000>;
+			twi_drv_used = <0>;
+			status = "okay";
+
+			codec_es8389: whisplay@10 {
+				compatible = "pisugar,whisplay";
+				reg = <0x10>;
+				#sound-dai-cells = <0>;
+				clocks = <&es8389_mclk>;
+				clock-names = "mclk";
+				vddd-supply = <&es8389_vddd>;
+				vdda-supply = <&es8389_vdda>;
+				everest,mclk-src = /bits/ 8 <0x40>;
+				whisplay,a733-i2c-retry;
+				status = "okay";
+			};
+
+			codec_wm8960: wm8960@1a {
+				compatible = "wlf,wm8960";
+				reg = <0x1a>;
+				#sound-dai-cells = <0>;
+				wlf,shared-lrclk;
+				status = "okay";
+			};
+		};
+	};
+
+	fragment@2 {
+		target = <&pio>;
+		__overlay__ {
+			whisplay_i2s0_bclk: whisplay-i2s0-bclk {
+				pins = "PB5";
+				function = "i2s0_bclk";
+				allwinner,drive = <1>;
+				bias-disable;
+			};
+
+			whisplay_i2s0_lrck: whisplay-i2s0-lrck {
+				pins = "PB6";
+				function = "i2s0_lrck";
+				allwinner,drive = <1>;
+				bias-disable;
+			};
+
+			whisplay_i2s0_din: whisplay-i2s0-din {
+				pins = "PB8";
+				function = "i2s0_din0";
+				allwinner,drive = <1>;
+				bias-pull-down;
+			};
+
+			whisplay_i2s0_dout: whisplay-i2s0-dout {
+				pins = "PB7";
+				function = "i2s0_dout0";
+				allwinner,drive = <1>;
+				bias-pull-down;
+			};
+
+			whisplay_i2s0_sleep: whisplay-i2s0-sleep {
+				pins = "PB5", "PB6", "PB8", "PB7";
+				function = "io_disabled";
+				allwinner,drive = <1>;
+				bias-disable;
+			};
+		};
+	};
+
+	fragment@3 {
+		target = <&i2s0_plat>;
+		__overlay__ {
+			tdm-num = <0>;
+			tx-pin = <0>;
+			rx-pin = <0>;
+			tx-hub-en;
+			rx-sync-en;
+			pinctrl-used;
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <&whisplay_i2s0_bclk
+				     &whisplay_i2s0_lrck
+				     &whisplay_i2s0_din
+				     &whisplay_i2s0_dout>;
+			pinctrl-1 = <&whisplay_i2s0_sleep>;
+			status = "okay";
+		};
+	};
+
+	fragment@4 {
+		target = <&i2s0_mach>;
+		__overlay__ {
+			status = "disabled";
+		};
+	};
+};

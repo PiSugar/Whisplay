@@ -15,11 +15,19 @@ PYTHON_BIN="$(command -v python3)"
 
 configure_orangepi_device_access() {
   local compat=""
+  local release=""
+  local boot_env=""
 
   if [ -r /proc/device-tree/compatible ]; then
     compat="$(tr '\0' '\n' </proc/device-tree/compatible 2>/dev/null || true)"
   fi
-  echo "$compat" | grep -qi 'xunlong,orangepi-zero2w' || return 0
+  [ -r /etc/orangepi-release ] && release="$(cat /etc/orangepi-release 2>/dev/null || true)"
+  [ -r /boot/orangepiEnv.txt ] && boot_env="$(cat /boot/orangepiEnv.txt 2>/dev/null || true)"
+  if ! echo "$compat" | grep -qi 'xunlong,orangepi-zero2w' && \
+     ! echo "$release" | grep -qi '^BOARD=orangepizero3w$' && \
+     ! echo "$boot_env" | grep -qi 'orangepi-zero3w\.dtb'; then
+    return 0
+  fi
 
   echo "Configuring Orange Pi GPIO/SPI access for $TARGET_USER..."
   getent group gpio >/dev/null 2>&1 || sudo groupadd --system gpio

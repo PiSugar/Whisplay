@@ -9,6 +9,7 @@
 **支持平台：**
 - Raspberry Pi（所有带 40-pin 排针的型号）
 - [Orange Pi Zero 2W](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-2W.html)（H618；官方 Debian Bookworm 1.0.2 / Linux 6.1.31）
+- [Orange Pi Zero 3W](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-3W.html)（Allwinner A733；官方 Debian Bookworm 1.0.0 / Linux 6.6.98）
 - [Radxa ZERO 3W](https://radxa.com/products/zeros/zero3w/) (RK3566)
 - [Radxa Cubie A7Z](https://radxa.com/products/cubie/a7z/) (Allwinner A733)
 
@@ -35,9 +36,9 @@ sudo reboot
 
 如果 Raspberry Pi 启动时检测到已烧录的 PiSugar Whisplay HAT EEPROM，安装脚本会让 EEPROM 负责自动加载 `whisplay-soundcard` overlay，并移除旧安装遗留的手动 `dtoverlay=whisplay-soundcard` 配置。
 
-> ⚠️ **重要硬件警告（仅 A7Z）**  
-> 由于电路不兼容，Whisplay HAT 的物理按键在 Radxa Cubie A7Z 上**不可使用**。  
-> **请勿点击按键**，否则可能导致 A7Z 立即断电。
+> ⚠️ **重要硬件警告（Orange Pi Zero 3W 和 Radxa Cubie A7Z）**
+> Orange Pi Zero 3W 和 Radxa Cubie A7Z **必须搭配 Whisplay V2 硬件使用**。
+> 请勿连接 Whisplay V1：其按钮线路带有 5V，按下按钮会导致主板立即断电。
 
 使用示例脚本测试硬件功能：
 
@@ -136,7 +137,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
   * **安装结果**: 安装脚本会写入 `~/.whisplay-daemon/settings.json`，并把默认示例 app 的 JSON 同步到 `~/.whisplay-daemon/app/`
 #### 2. 统一声卡驱动
 
-  * **来源**: Raspberry Pi、Orange Pi Zero 2W、Radxa ZERO 3W 和 Radxa Cubie A7Z 均使用本工程内置的统一 Whisplay 声卡驱动 `audio/whisplay-soundcard/`，兼容 WM8960 和 ES8389 两种 codec 变体。
+  * **来源**: Raspberry Pi、Orange Pi Zero 2W/3W、Radxa ZERO 3W 和 Radxa Cubie A7Z 均使用本工程内置的统一 Whisplay 声卡驱动 `audio/whisplay-soundcard/`，兼容 WM8960 和 ES8389 两种 codec 变体。
 
   * **旧版驱动**: 旧版驱动位于 `support/wm8960` 分支。如有需要，可以先检出该分支再进行安装。
 
@@ -144,6 +145,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
     - **自动识别**: 运行 `install_driver.sh`
     - **Raspberry Pi**: 运行 `script/install_raspberry_pi.sh`
     - **Orange Pi Zero 2W**: 运行 `script/install_orangepi_zero2w.sh`
+    - **Orange Pi Zero 3W**: 运行 `script/install_orangepi_zero3w.sh`
     - **Radxa ZERO 3W**: 运行 `script/install_radxa_zero3w.sh`
     - **Radxa Cubie A7Z**: 运行 `script/install_radxa_cubie_a7z.sh`
 
@@ -153,6 +155,8 @@ tail -f ~/.whisplay-daemon/daemon-app.log
     sudo bash script/install_raspberry_pi.sh
     # Orange Pi Zero 2W:
     sudo bash script/install_orangepi_zero2w.sh
+    # Orange Pi Zero 3W:
+    sudo bash script/install_orangepi_zero3w.sh
     # Radxa ZERO 3W:
     sudo bash script/install_radxa_zero3w.sh
     # Radxa Cubie A7Z:
@@ -167,7 +171,9 @@ tail -f ~/.whisplay-daemon/daemon-app.log
 #### 4. 设备树 Overlay
 
   * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-orangepi-zero2w.dts`：H618 专用统一 overlay，音频 I2C1 使用物理 3/5 脚，AHUB/I2S0 使用物理 12/35/38/40 脚。安装器还会启用官方 `pi-i2c1`、`spi1-cs0-spidev` overlay（40-pin 物理 19/21/23/24 脚上的 SPI1 CS0），并把 Whisplay user overlay 写入 `/boot/orangepiEnv.txt`。
+  * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-orangepi-zero3w.dts`：A733 专用统一 overlay，音频 TWI0 使用物理 3/5 脚，I2S0 使用物理 12/35/38/40 脚，安装器会为 LCD 启用 SPI3 CS0。I2S0 MCLK/PB4 不会被占用，因为物理 pin 7 必须保留给 LCD reset。
   * **Orange Pi OS 1.0.2 内核头文件**：官方镜像仓库没有可安装的 headers 包。在内核严格为 `6.1.31-sun50iw9` 时，安装器会下载固定版本且经过 SHA-256 校验的 headers 归档来编译统一模块；其他内核版本需要自行在 `/lib/modules/$(uname -r)/build` 提供匹配头文件。
+  * **Orange Pi Zero 3W 内核头文件**：在官方 `6.6.98-sun60iw2` 镜像上，安装器会下载固定版本并校验 SHA-256 的 A733 Linux 6.6.98 headers 包，调整 kernel release 后再构建模块。
   * **Orange Pi 音频约束**：H618 AHUB 固定使用 48 kHz、2 个 32-bit slot；统一驱动会设置厂商 PLL/TDM 时序，并补齐官方 6.1.31 BSP 缺少的 APBIF0 ↔ I2S0 双向路由。
 
 #### 5. `audio/whisplay-soundcard/src/dts/whisplay-soundcard-radxa-zero3w.dts`（Radxa ZERO 3W）
@@ -245,7 +251,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
 - **Radxa ZERO 3W**: Debian 12 (bookworm) 官方镜像
 - **Radxa Cubie A7Z**: Debian 11 (bullseye) 官方镜像
 
-**A7Z 安全提示：** 在 Radxa Cubie A7Z 上，请**不要点击 Whisplay HAT 的物理按键**。由于电路不兼容，点击可能导致设备立即断电。
+**硬件安全提示：** Orange Pi Zero 3W 和 Radxa Cubie A7Z 必须搭配 **Whisplay V2** 使用。请勿在这两款主板上使用 Whisplay V1：其按钮线路带有 5V，按下按钮会导致主板立即断电。
 
 ## 文档和相关项目
 
