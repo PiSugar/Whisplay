@@ -147,7 +147,8 @@ echo
 echo "Detected platform: $(tr -d '\0' </proc/device-tree/model 2>/dev/null || true)"
 echo "Sound driver: $SOUNDCARD_DIR"
 echo
-warn "Do not press the Whisplay HAT button on A7Z; it can cut board power."
+warn "Radxa Cubie A7Z requires Whisplay V2 hardware."
+warn "Do not use Whisplay V1: its 5 V button circuit can cut board power."
 echo
 
 install_platform_deps

@@ -68,6 +68,9 @@ echo " Whisplay HAT Driver Install - Orange Pi Zero 3W"
 echo "================================================"
 echo "Kernel: $(uname -r)"
 echo
+warn "Orange Pi Zero 3W requires Whisplay V2 hardware."
+warn "Do not use Whisplay V1: its 5 V button circuit can cut board power."
+echo
 
 log "Installing Orange Pi platform dependencies..."
 install_platform_deps

@@ -36,9 +36,9 @@ sudo reboot
 
 如果 Raspberry Pi 启动时检测到已烧录的 PiSugar Whisplay HAT EEPROM，安装脚本会让 EEPROM 负责自动加载 `whisplay-soundcard` overlay，并移除旧安装遗留的手动 `dtoverlay=whisplay-soundcard` 配置。
 
-> ⚠️ **重要硬件警告（仅 A7Z）**  
-> 由于电路不兼容，Whisplay HAT 的物理按键在 Radxa Cubie A7Z 上**不可使用**。  
-> **请勿点击按键**，否则可能导致 A7Z 立即断电。
+> ⚠️ **重要硬件警告（Orange Pi Zero 3W 和 Radxa Cubie A7Z）**
+> Orange Pi Zero 3W 和 Radxa Cubie A7Z **必须搭配 Whisplay V2 硬件使用**。
+> 请勿连接 Whisplay V1：其按钮线路带有 5V，按下按钮会导致主板立即断电。
 
 使用示例脚本测试硬件功能：
 
@@ -251,7 +251,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
 - **Radxa ZERO 3W**: Debian 12 (bookworm) 官方镜像
 - **Radxa Cubie A7Z**: Debian 11 (bullseye) 官方镜像
 
-**A7Z 安全提示：** 在 Radxa Cubie A7Z 上，请**不要点击 Whisplay HAT 的物理按键**。由于电路不兼容，点击可能导致设备立即断电。
+**硬件安全提示：** Orange Pi Zero 3W 和 Radxa Cubie A7Z 必须搭配 **Whisplay V2** 使用。请勿在这两款主板上使用 Whisplay V1：其按钮线路带有 5V，按下按钮会导致主板立即断电。
 
 ## 文档和相关项目
 

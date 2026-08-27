@@ -36,9 +36,9 @@ sudo reboot
 
 When Raspberry Pi boots with a programmed PiSugar Whisplay HAT EEPROM, the installer leaves `whisplay-soundcard` overlay loading to the EEPROM and removes any legacy manual `dtoverlay=whisplay-soundcard` config.
 
-> ⚠️ **Important Hardware Warning (A7Z only)**  
-> Due to circuit incompatibility, the physical button on Whisplay HAT is **not safe to use on Radxa Cubie A7Z**.  
-> **Do not press the button**, otherwise the A7Z may shut down / lose power immediately.
+> ⚠️ **Important Hardware Warning (Orange Pi Zero 3W and Radxa Cubie A7Z)**
+> Orange Pi Zero 3W and Radxa Cubie A7Z **must be used with Whisplay V2 hardware**.
+> Do not connect Whisplay V1: its button circuit carries 5 V and pressing the button can immediately cut power to the board.
 
 Test the hardware functions with the demo script:
 
@@ -247,7 +247,7 @@ The `example` directory contains 4 end-user demo programs. If you are using whis
 - **Radxa ZERO 3W**: Debian 12 (bookworm) official image
 - **Radxa Cubie A7Z**: Debian 11 (bullseye) official image
 
-**A7Z Safety Notice:** On Radxa Cubie A7Z, please **do not click the physical button** on Whisplay HAT. Circuit incompatibility may cause immediate power-off.
+**Hardware Safety Notice:** Orange Pi Zero 3W and Radxa Cubie A7Z require **Whisplay V2**. Do not use Whisplay V1 on either board: its button circuit carries 5 V and pressing the button can immediately cut board power.
 
 ## Documentation and Related Projects
 
