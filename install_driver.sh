@@ -7,6 +7,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 detect_platform() {
   local model=""
   local compat=""
+  local release=""
+  local boot_env=""
+  [[ -r /etc/orangepi-release ]] && release="$(cat /etc/orangepi-release 2>/dev/null || true)"
+  [[ -r /boot/orangepiEnv.txt ]] && boot_env="$(cat /boot/orangepiEnv.txt 2>/dev/null || true)"
   if [[ -r /proc/device-tree/model ]]; then
     model="$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || true)"
   fi
@@ -14,6 +18,11 @@ detect_platform() {
     compat="$(tr '\0' '\n' < /proc/device-tree/compatible 2>/dev/null || true)"
   fi
 
+  if echo "$release" | grep -qi '^BOARD=orangepizero3w$' || \
+      echo "$boot_env" | grep -qi 'orangepi-zero3w\.dtb'; then
+    echo "orangepi_zero3w"
+    return 0
+  fi
   if [[ "$model" == *"Raspberry Pi"* ]]; then
     echo "raspberry_pi"
     return 0
@@ -48,6 +57,9 @@ case "$platform" in
   orangepi_zero2w)
     exec bash "$SCRIPT_DIR/script/install_orangepi_zero2w.sh" "$@"
     ;;
+  orangepi_zero3w)
+    exec bash "$SCRIPT_DIR/script/install_orangepi_zero3w.sh" "$@"
+    ;;
   *)
     echo "Unsupported or unknown platform."
     echo "Use one of these manually if needed:"
@@ -55,6 +67,7 @@ case "$platform" in
     echo "  script/install_radxa_zero3w.sh"
     echo "  script/install_radxa_cubie_a7z.sh"
     echo "  script/install_orangepi_zero2w.sh"
+    echo "  script/install_orangepi_zero3w.sh"
     exit 1
     ;;
 esac
