@@ -6,6 +6,7 @@ import threading
 import time
 
 from .bluetooth_app import BLUETOOTH_APP_ID, BluetoothInternalApp
+from .system_app import SYSTEM_APP_ID, SystemInternalApp
 from .volume_app import VOLUME_APP_ID, VolumeInternalApp
 from .wifi_app import WIFI_APP_ID, WifiInternalApp
 
@@ -13,7 +14,7 @@ from .wifi_app import WIFI_APP_ID, WifiInternalApp
 class InternalAppManager:
     REFRESH_INTERVAL_SEC = 20.0
 
-    def __init__(self):
+    def __init__(self, lock_screen=None):
         self._lock = threading.RLock()
         self._dirty = False
         self._exit_requested = False
@@ -41,10 +42,19 @@ class InternalAppManager:
             self._spawn_worker,
             self._request_exit,
         )
+        self.system = SystemInternalApp(
+            self._lock,
+            self._mark_dirty,
+            self._run_command,
+            self._spawn_worker,
+            self._request_exit,
+            lock_screen or (lambda: None),
+        )
         self._apps = {
             BLUETOOTH_APP_ID: self.bluetooth,
             WIFI_APP_ID: self.wifi,
             VOLUME_APP_ID: self.volume,
+            SYSTEM_APP_ID: self.system,
         }
 
     def start(self):
@@ -54,7 +64,12 @@ class InternalAppManager:
         self.bluetooth.stop()
 
     def builtin_apps(self):
-        return [self.bluetooth.builtin_app(), self.wifi.builtin_app(), self.volume.builtin_app()]
+        return [
+            self.bluetooth.builtin_app(),
+            self.wifi.builtin_app(),
+            self.volume.builtin_app(),
+            self.system.builtin_app(),
+        ]
 
     def is_internal_app(self, app_id: str | None) -> bool:
         return app_id in self._apps
@@ -142,6 +157,7 @@ class InternalAppManager:
         self.bluetooth.set_error(text)
         self.wifi.set_error(text)
         self.volume.set_error(text)
+        self.system.set_error(text)
 
     def _mark_dirty(self):
         with self._lock:

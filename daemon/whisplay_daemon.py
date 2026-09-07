@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import mmap
 import os
 import re
@@ -68,7 +69,7 @@ class WhisplayDaemon:
         self.desktop = DesktopRenderer(self.board, SCRIPT_DIR)
         self.pisugar = PiSugarManager()
         self.status_poller = StatusPoller(self.pisugar)
-        self.internal_apps = InternalAppManager()
+        self.internal_apps = InternalAppManager(self._lock_screen)
         self.keyboard_reader = ExternalKeyboardReader()
         self.pisugar_home_button = self._normalize_pisugar_home_button(pisugar_home_button)
         self.apps: dict[str, AppRecord] = {}
@@ -82,6 +83,9 @@ class WhisplayDaemon:
         self._recent_release_times: list[float] = []
         self._foreground_long_press_fired = False
         self._last_status_poll_at = 0.0
+        self._screen_locked = False
+        self._lock_started_at = 0.0
+        self._last_lock_led_level = -1
         self._render_thread = threading.Thread(target=self._render_loop, daemon=True)
         self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self._load_apps()
@@ -99,6 +103,8 @@ class WhisplayDaemon:
 
     def _handle_keyboard_action(self, action: str):
         with self.state_lock:
+            if self._screen_locked:
+                return
             if self.foreground_app_id and self.internal_apps.text_input_active():
                 self.internal_apps.handle_keyboard_action(self.foreground_app_id, action)
                 if self.internal_apps.consume_dirty():
@@ -247,6 +253,8 @@ class WhisplayDaemon:
         return apps[self.selected_app_index]
 
     def _render_desktop(self):
+        if self._screen_locked:
+            return
         self.last_frame = None
         running_app_id = None
         if not self.foreground_app_id:
@@ -264,6 +272,8 @@ class WhisplayDaemon:
         )
 
     def _render_internal_app(self):
+        if self._screen_locked:
+            return
         if not self.internal_apps.is_internal_app(self.foreground_app_id):
             return
         self.last_frame = None
@@ -376,8 +386,45 @@ class WhisplayDaemon:
             return
         self._last_status_poll_at = now
         changed = self.status_poller.refresh()
-        if changed and not self.foreground_app_id:
+        if changed and not self.foreground_app_id and not self._screen_locked:
             self._render_desktop()
+
+    def _lock_screen(self):
+        app = self.apps.get(self.foreground_app_id) if self.foreground_app_id else None
+        if app is not None:
+            app.session_token = None
+            self._teardown_framebuffer(app)
+        self.foreground_app_id = None
+        self.pending_launch_app_id = None
+        self.pending_launch_started_at = 0.0
+        self.exit_request = None
+        self._foreground_long_press_fired = False
+        self._screen_locked = True
+        self._lock_started_at = time.monotonic()
+        self._last_lock_led_level = -1
+        self.last_frame = None
+        self.board.set_backlight(0)
+        self.board.set_rgb(0, 0, 0)
+        self.event_broadcaster.broadcast("screen_locked")
+
+    def _unlock_screen(self):
+        self._screen_locked = False
+        self._lock_started_at = 0.0
+        self._last_lock_led_level = -1
+        self._button_press_started_at = 0.0
+        self._foreground_long_press_fired = False
+        self.board.set_rgb(0, 0, 0)
+        self.board.set_backlight(100)
+        self._render_desktop()
+        self.event_broadcaster.broadcast("screen_unlocked")
+
+    def _update_lock_led(self):
+        elapsed = time.monotonic() - self._lock_started_at
+        phase = (math.sin((2.0 * math.pi * elapsed) / 2.4) + 1.0) / 2.0
+        blue = int(12 + 118 * phase)
+        if blue != self._last_lock_led_level:
+            self.board.set_rgb(0, 0, blue)
+            self._last_lock_led_level = blue
 
     def _init_pisugar_integration(self):
         sock_path = self.pisugar.socket_path()
@@ -465,6 +512,8 @@ class WhisplayDaemon:
 
     def _on_button_pressed(self):
         with self.state_lock:
+            if self._screen_locked:
+                return
             self._button_press_started_at = time.time()
             self._foreground_long_press_fired = False
             if not self.foreground_app_id or self.internal_apps.is_internal_app(self.foreground_app_id):
@@ -478,6 +527,9 @@ class WhisplayDaemon:
 
     def _on_button_released(self):
         with self.state_lock:
+            if self._screen_locked:
+                self._unlock_screen()
+                return
             if not self.foreground_app_id or self.internal_apps.is_internal_app(self.foreground_app_id):
                 self.board.set_rgb(0, 0, 0)
             now = time.time()
@@ -554,6 +606,8 @@ class WhisplayDaemon:
     def _monitor_loop(self):
         while self.running:
             with self.state_lock:
+                if self._screen_locked:
+                    self._update_lock_led()
                 for app in self.apps.values():
                     if app.process is not None and app.process.poll() is not None:
                         rc = app.process.returncode
