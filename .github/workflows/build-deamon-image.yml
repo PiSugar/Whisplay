@@ -200,7 +200,7 @@ jobs:
           sudo mount -o ro "$boot_part" /mnt/whisplay-boot
 
           check_file() {
-            test -e "/mnt/whisplay-root$1" || {
+            sudo test -e "/mnt/whisplay-root$1" || {
               echo "Missing expected path: $1" >&2
               return 1
             }
@@ -229,9 +229,9 @@ jobs:
           check_boot_file /logo_lcd_240_280_rgb565.bmp
           check_boot_file /config.txt
 
-          test ! -e /mnt/whisplay-root/home/pi/whisplay-ai-chatbot
-          test ! -e /mnt/whisplay-root/etc/systemd/system/chatbot.service
-          test ! -e /mnt/whisplay-root/etc/systemd/system/whisplay-chatbot-register.service
+          sudo test ! -e /mnt/whisplay-root/home/pi/whisplay-ai-chatbot
+          sudo test ! -e /mnt/whisplay-root/etc/systemd/system/chatbot.service
+          sudo test ! -e /mnt/whisplay-root/etc/systemd/system/whisplay-chatbot-register.service
 
           sudo grep -qxF 'enable_uart=1' /mnt/whisplay-boot/config.txt
           sudo grep -qxF 'uart_2ndstage=1' /mnt/whisplay-boot/config.txt
@@ -308,34 +308,3 @@ jobs:
           else
             gh release create "$RELEASE_TAG" release-assets/* "${release_flags[@]}"
           fi
-
-  notify-discord:
-    needs:
-      - build-image
-      - publish-release
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Post to Discord changelog
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.build-image.outputs.release_tag }}
-        run: |
-          set -euo pipefail
-          release_json="$(gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" --json body,isPrerelease,name,url)"
-          name="$(jq -r '.name // empty' <<<"$release_json")"
-          url="$(jq -r '.url // empty' <<<"$release_json")"
-          body="$(jq -r '.body // "Deamon image release is available."' <<<"$release_json")"
-          prerelease="$(jq -r '.isPrerelease' <<<"$release_json")"
-          body="${body:0:1800}"
-          if [ "$prerelease" = "true" ]; then color=16776960; badge="Pre-release"; else color=3066993; badge="New Release"; fi
-          payload="$(jq -n \
-            --arg title "$badge: ${name:-$RELEASE_TAG}" \
-            --arg url "$url" \
-            --arg desc "$body" \
-            --argjson color "$color" \
-            --arg tag "$RELEASE_TAG" \
-            --arg repo "${{ github.repository }}" \
-            '{username:"GitHub Release",embeds:[{title:$title,url:$url,description:$desc,color:$color,fields:[{name:"Tag",value:$tag,inline:true},{name:"Repository",value:$repo,inline:true}],timestamp:(now|todate)}]}')"
-          curl --fail-with-body -sS -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL"
