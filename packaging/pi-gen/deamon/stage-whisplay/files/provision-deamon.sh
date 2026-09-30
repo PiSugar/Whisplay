@@ -46,6 +46,7 @@ apt-get install -y \
   python3-numpy \
   python3-pygame \
   python3-pip \
+  python3-smbus \
   python3-spidev \
   raspi-config \
   rfkill \

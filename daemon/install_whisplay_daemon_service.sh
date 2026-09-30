@@ -59,6 +59,11 @@ if ! "$PYTHON_BIN" -c "import numpy" 2>/dev/null; then
   sudo apt-get install -y python3-numpy || echo "Warning: failed to install python3-numpy, falling back to pure-Python RGB565"
 fi
 
+echo "Ensuring python3-smbus is installed (for PiSugar 3 power-button detection)..."
+if ! "$PYTHON_BIN" -c "import smbus" 2>/dev/null; then
+  sudo apt-get install -y python3-smbus || echo "Warning: failed to install python3-smbus; PiSugar 3 power-button detection will be unavailable"
+fi
+
 echo "Ensuring ffmpeg is installed (required by play_mp4 app)..."
 if ! command -v ffmpeg >/dev/null 2>&1; then
   sudo apt-get install -y ffmpeg || echo "Warning: failed to install ffmpeg; play_mp4 will not work until ffmpeg is available"

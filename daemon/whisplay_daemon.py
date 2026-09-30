@@ -20,7 +20,7 @@ if RUNTIME_DIR not in sys.path:
 
 from daemon_events import EventBroadcaster
 from daemon_models import AppRecord
-from daemon_pisugar import PiSugarManager
+from daemon_pisugar import PISUGAR3_POWER_BUTTON_POLL_INTERVAL_SEC, PiSugarManager
 from daemon_renderer import DesktopRenderer
 from daemon_shared import (
     BUTTON_LONG_PRESS_SEC,
@@ -427,14 +427,25 @@ class WhisplayDaemon:
             self._last_lock_led_level = blue
 
     def _init_pisugar_integration(self):
+        is_pisugar3 = self.pisugar.detect_pisugar3()
         sock_path = self.pisugar.socket_path()
+        if sock_path:
+            self.pisugar.sock_path = sock_path
+            self.pisugar.cleanup_daemon_managed_hooks(sock_path)
+        if self.pisugar_home_button == "none":
+            self.pisugar.close()
+            print("[WhisplayDaemon] pisugar home button integration disabled by settings")
+            return
+        if is_pisugar3:
+            self.pisugar.home_button_event = "power_single"
+            self.pisugar.pisugar3_power_button_exit_enabled = True
+            print(
+                "[WhisplayDaemon] PiSugar 3 detected on I2C; "
+                "power-button single click returns home"
+            )
+            return
         if not sock_path:
             print("[WhisplayDaemon] pisugar-server socket not found, skipping integration")
-            return
-        self.pisugar.sock_path = sock_path
-        self.pisugar.cleanup_daemon_managed_hooks(sock_path)
-        if self.pisugar_home_button == "none":
-            print("[WhisplayDaemon] pisugar home button integration disabled by settings")
             return
         self.pisugar.home_button_event = self.pisugar_home_button
         custom_button = self.pisugar.has_custom_button_event(sock_path, self.pisugar_home_button)
@@ -664,10 +675,17 @@ class WhisplayDaemon:
                     app = self.apps.get(self.exit_request["app_id"])
                     if app and self.foreground_app_id == app.app_id:
                         self._release_focus(app, "exit_timeout")
-                if self.pisugar.poll_home_trigger():
+                if (
+                    self.pisugar.poll_pisugar3_power_button_single()
+                    or self.pisugar.poll_home_trigger()
+                ):
                     self._request_exit_from_pisugar()
                 self._refresh_status_icons()
-            time.sleep(0.1)
+            time.sleep(
+                PISUGAR3_POWER_BUTTON_POLL_INTERVAL_SEC
+                if self.pisugar.pisugar3_power_button_exit_enabled
+                else 0.1
+            )
 
     def _register_app(self, payload: dict) -> dict:
         app_id = str(payload.get("app_id", "")).strip()
@@ -925,6 +943,7 @@ class WhisplayDaemon:
         self.event_broadcaster.broadcast("daemon_stopping")
         self.internal_apps.stop()
         self.keyboard_reader.stop()
+        self.pisugar.close()
         with self.state_lock:
             for app in self.apps.values():
                 self._teardown_framebuffer(app)

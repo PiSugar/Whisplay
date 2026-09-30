@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import socket
+import time
 
 
 PISUGAR_SOCKET_CANDIDATES = (
@@ -12,6 +13,12 @@ PISUGAR_SOCKET_CANDIDATES = (
 PISUGAR_BUTTON_EVENTS = ("single", "double", "long")
 PISUGAR_TRIGGER_FILE = "/tmp/whisplay-daemon-home.flag"
 PISUGAR_OLD_TRIGGER_FILE = "/tmp/whisplay-pisugar-long.flag"
+PISUGAR3_I2C_BUS = 1
+PISUGAR3_I2C_ADDRESS = 0x57
+PISUGAR3_STATUS_REGISTER = 0x02
+PISUGAR3_POWER_BUTTON_MASK = 0x01
+PISUGAR3_POWER_BUTTON_POLL_INTERVAL_SEC = 0.02
+PISUGAR3_POWER_BUTTON_MAX_SINGLE_PRESS_SEC = 0.6
 PISUGAR_DEFAULT_SHELL_PLACEHOLDERS = {
     "echo longpress",
     "long echo longpress",
@@ -32,6 +39,107 @@ class PiSugarManager:
         self.home_button_event = "none"
         self.home_button_exit_enabled = False
         self.last_trigger_mtime = 0.0
+        self.pisugar3_bus = None
+        self.pisugar3_power_button_exit_enabled = False
+        self.pisugar3_power_button_available = False
+        self.pisugar3_power_button_last_state = False
+        self.pisugar3_power_button_pressed_at: float | None = None
+        self.pisugar3_power_button_last_poll_at = 0.0
+
+    def _read_pisugar3_power_button_pressed(self) -> bool | None:
+        if self.pisugar3_bus is None:
+            return None
+        try:
+            status = int(
+                self.pisugar3_bus.read_byte_data(
+                    PISUGAR3_I2C_ADDRESS,
+                    PISUGAR3_STATUS_REGISTER,
+                )
+            )
+        except Exception:
+            return None
+        return bool(status & PISUGAR3_POWER_BUTTON_MASK)
+
+    def detect_pisugar3(self) -> bool:
+        """Detect PiSugar 3 using its raw power-button status register."""
+        try:
+            import smbus  # type: ignore
+
+            bus = smbus.SMBus(PISUGAR3_I2C_BUS)
+        except Exception:
+            return False
+
+        self.pisugar3_bus = bus
+        pressed = self._read_pisugar3_power_button_pressed()
+        if pressed is None:
+            try:
+                bus.close()
+            except Exception:
+                pass
+            self.pisugar3_bus = None
+            return False
+
+        self.pisugar3_power_button_last_state = pressed
+        self.pisugar3_power_button_pressed_at = time.monotonic() if pressed else None
+        self.pisugar3_power_button_available = True
+        return True
+
+    def close(self):
+        if self.pisugar3_bus is not None:
+            try:
+                self.pisugar3_bus.close()
+            except Exception:
+                pass
+        self.pisugar3_bus = None
+        self.pisugar3_power_button_exit_enabled = False
+        self.pisugar3_power_button_available = False
+        self.pisugar3_power_button_pressed_at = None
+
+    def poll_pisugar3_power_button_single(self, now: float | None = None) -> bool:
+        if not self.pisugar3_power_button_exit_enabled or self.pisugar3_bus is None:
+            return False
+        now = time.monotonic() if now is None else now
+        if (
+            now - self.pisugar3_power_button_last_poll_at
+            < PISUGAR3_POWER_BUTTON_POLL_INTERVAL_SEC
+        ):
+            return False
+        self.pisugar3_power_button_last_poll_at = now
+
+        pressed = self._read_pisugar3_power_button_pressed()
+        if pressed is None:
+            self.pisugar3_power_button_available = False
+            self.pisugar3_power_button_pressed_at = None
+            return False
+
+        if not self.pisugar3_power_button_available:
+            self.pisugar3_power_button_last_state = pressed
+            self.pisugar3_power_button_pressed_at = now if pressed else None
+            self.pisugar3_power_button_available = True
+            return False
+
+        was_pressed = self.pisugar3_power_button_last_state
+        self.pisugar3_power_button_last_state = pressed
+        if pressed and not was_pressed:
+            self.pisugar3_power_button_pressed_at = now
+            return False
+        if not pressed and was_pressed:
+            pressed_at = self.pisugar3_power_button_pressed_at
+            self.pisugar3_power_button_pressed_at = None
+            return (
+                pressed_at is not None
+                and now - pressed_at <= PISUGAR3_POWER_BUTTON_MAX_SINGLE_PRESS_SEC
+            )
+        if (
+            pressed
+            and self.pisugar3_power_button_pressed_at is not None
+            and now - self.pisugar3_power_button_pressed_at
+            > PISUGAR3_POWER_BUTTON_MAX_SINGLE_PRESS_SEC
+        ):
+            self.pisugar3_power_button_pressed_at = None
+        elif not pressed:
+            self.pisugar3_power_button_pressed_at = None
+        return False
 
     def socket_path(self) -> str | None:
         for path in PISUGAR_SOCKET_CANDIDATES:

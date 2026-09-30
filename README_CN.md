@@ -87,7 +87,7 @@ daemon 设置示例：
 }
 ```
 
-`pisugar_home_button` 用于控制 PiSugar 的哪个按键事件会触发“从前台 app 返回 daemon 首页”。支持 `single`、`double`、`long`、`none`，默认值为 `single`。
+`pisugar_home_button` 用于控制 PiSugar 的哪个按键事件会触发“从前台 app 返回 daemon 首页”。支持 `single`、`double`、`long`、`none`，默认值为 `single`。检测到 PiSugar3（I²C bus 1、地址 `0x57`）时，daemon 会直接读取 `0x02` 寄存器的电源键状态，以电源键单击返回首页，不再占用 PiSugar 自定义按钮的单击事件；设为 `none` 仍可关闭此功能。
 
 查看 daemon 日志：
 
@@ -130,7 +130,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
   * **桌面交互**: 单击切换 app、长按启动/切到前台，前台 app 内快速按 4 下请求退出并回到桌面
   * **内建系统页**: 默认包含 `Bluetooth`、`WiFi`、`Volume` 和 `Power` 四个入口，均由 daemon 自身渲染，无需外部 app 进程
   * **WiFi 输入方式**: 选择加密网络后会进入单按键密码页；密码输入依赖外接键盘（方向键/回车/退格/ESC）
-  * **PiSugar 返回集成**: 如果系统中运行了 `pisugar-server`，daemon 会根据 `~/.whisplay-daemon/settings.json` 中的 `pisugar_home_button` 自动绑定 `single`、`double` 或 `long` 作为“返回首页”事件；设为 `none` 可关闭此功能
+  * **PiSugar 返回集成**: daemon 会先通过 I²C 检测 PiSugar3；检测成功时直接使用电源键单击作为“返回首页”，并释放 PiSugar 自定义按钮单击事件。其他型号仍通过 `pisugar-server`，根据 `~/.whisplay-daemon/settings.json` 中的 `pisugar_home_button` 绑定 `single`、`double` 或 `long`；设为 `none` 可关闭此功能
   * **安装为服务**:
     ```shell
     sudo bash daemon/install_whisplay_daemon_service.sh
