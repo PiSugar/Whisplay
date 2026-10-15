@@ -122,6 +122,42 @@ static void whisplay_boot_work_fn(struct work_struct *work)
 #define WHISPLAY_H616_I2S0_RX_ROUTE 0x220
 #define WHISPLAY_H616_APBIF0_FROM_I2S0 BIT(27)
 #define WHISPLAY_H616_I2S0_FROM_APBIF0 BIT(31)
+#define WHISPLAY_H616_AHUB_RST 0x08
+#define WHISPLAY_H616_AHUB_GAT 0x0c
+#define WHISPLAY_H616_APBIF0_TX_CTL 0x10
+#define WHISPLAY_H616_APBIF0_TX_IRQ_CTL 0x14
+#define WHISPLAY_H616_APBIF0_TXFIFO_CTL 0x20
+#define WHISPLAY_H616_APBIF0_RX_CTL 0x100
+#define WHISPLAY_H616_APBIF0_RX_IRQ_CTL 0x104
+#define WHISPLAY_H616_APBIF0_RXFIFO_CTL 0x110
+#define WHISPLAY_H616_I2S0_CTL 0x200
+#define WHISPLAY_H616_I2S0_FMT0 0x204
+#define WHISPLAY_H616_APBIF_TX_RESET_GATE BIT(31)
+#define WHISPLAY_H616_APBIF_RX_RESET_GATE BIT(27)
+#define WHISPLAY_H616_I2S0_RESET_GATE BIT(23)
+#define WHISPLAY_H616_APBIF_START BIT(4)
+#define WHISPLAY_H616_APBIF_DRQ BIT(3)
+#define WHISPLAY_H616_APBIF_FIFO_FLUSH BIT(12)
+#define WHISPLAY_H616_APBIF_WORD_SIZE_MASK (0x7U << 16)
+#define WHISPLAY_H616_APBIF_CHANNELS_MASK (0xfU << 8)
+#define WHISPLAY_H616_APBIF_TX_PACK_MODE BIT(0)
+#define WHISPLAY_H616_APBIF_RX_PACK_MODE_MASK (0x3U << 0)
+#define WHISPLAY_H616_I2S_GEN BIT(0)
+#define WHISPLAY_H616_I2S_RXEN BIT(1)
+#define WHISPLAY_H616_I2S_TXEN BIT(2)
+#define WHISPLAY_H616_I2S_SDO0_EN BIT(8)
+#define WHISPLAY_H616_I2S_SDI0_EN BIT(12)
+#define WHISPLAY_H616_I2S0_CHCFG 0x224
+#define WHISPLAY_H616_I2S0_OUT_SLOT0 0x230
+#define WHISPLAY_H616_I2S0_IN_SLOT 0x270
+#define WHISPLAY_H616_I2S_LRCK_WIDTH BIT(30)
+#define WHISPLAY_H616_I2S_LRCK_PERIOD_MASK (0x1ffU << 8)
+#define WHISPLAY_H616_I2S_SAMPLE_RES_MASK (0x7U << 4)
+#define WHISPLAY_H616_I2S_SLOT_WIDTH_MASK (0x7U << 0)
+#define WHISPLAY_H616_I2S_TX_CHANNELS_MASK (0xfU << 0)
+#define WHISPLAY_H616_I2S_RX_CHANNELS_MASK (0xfU << 4)
+#define WHISPLAY_H616_I2S_SLOT_COUNT_MASK (0xfU << 16)
+#define WHISPLAY_H616_I2S_SLOT_ENABLE_MASK (0xffffU << 0)
 #define WHISPLAY_A733_I2S_TX0CHSEL 0x34
 #define WHISPLAY_A733_I2S_TX1CHSEL 0x38
 #define WHISPLAY_A733_I2S_TX2CHSEL 0x3c
@@ -933,10 +969,16 @@ static int whisplay_i2c_probe(struct i2c_client *i2c)
 	unsigned int val;
 	int ret;
 
-	if (i2c->addr != 0x10)
+	/*
+	 * ES8389 exposes either 0x10 or 0x12 depending on the state sampled
+	 * by its address-select pin during reset.  Some H616 boards retain the
+	 * latter selection across a warm reboot, so describe and accept both.
+	 */
+	if (i2c->addr != 0x10 && i2c->addr != 0x12)
 		return -ENODEV;
 
-	dev_info(&i2c->dev, "Whisplay probing ES8389 at 0x10\n");
+	dev_info(&i2c->dev, "Whisplay probing ES8389 at 0x%02x\n",
+		 i2c->addr);
 
 	priv = devm_kzalloc(&i2c->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -964,14 +1006,18 @@ static int whisplay_i2c_probe(struct i2c_client *i2c)
 		/* Fallback: try a write to verify chip presence */
 		ret = regmap_write(regmap, ES8389_ISO_CTL, 0x00);
 		if (ret < 0) {
-			dev_dbg(&i2c->dev, "ES8389 not present at 0x10\n");
+			dev_dbg(&i2c->dev, "ES8389 not present at 0x%02x\n",
+				i2c->addr);
 			return -ENODEV;
 		}
-		dev_info(&i2c->dev, "Detected ES8389 at 0x10 (write OK)\n");
+		dev_info(&i2c->dev,
+			 "Detected ES8389 at 0x%02x (write OK)\n", i2c->addr);
 	} else if (val != 0xFF && val != 0x00) {
-		dev_info(&i2c->dev, "Detected ES8389 at 0x10 (CHIP_ID0=0x%02x)\n", val);
+		dev_info(&i2c->dev,
+			 "Detected ES8389 at 0x%02x (CHIP_ID0=0x%02x)\n",
+			 i2c->addr, val);
 	} else {
-		dev_dbg(&i2c->dev, "No ES8389 at 0x10\n");
+		dev_dbg(&i2c->dev, "No ES8389 at 0x%02x\n", i2c->addr);
 		return -ENODEV;
 	}
 
@@ -1283,7 +1329,7 @@ static int whisplay_h616_set_ahub_routes(void)
 	int ret;
 
 	ahub_np = of_find_compatible_node(NULL, NULL,
-					  "allwinner,sunxi-snd-plat-ahub_dam");
+					  "allwinner,sunxi-ahub");
 	if (!ahub_np)
 		return -ENODEV;
 	ahub_pdev = of_find_device_by_node(ahub_np);
@@ -1310,12 +1356,209 @@ out_put_device:
 	return ret;
 }
 
+static int whisplay_h616_set_stream_enabled(
+					struct snd_pcm_substream *substream,
+					bool enabled)
+{
+	struct platform_device *ahub_pdev;
+	struct device_node *ahub_np;
+	struct regmap *regmap;
+	unsigned int reset_gate;
+	unsigned int stream_mask;
+	unsigned int ctl_reg;
+	unsigned int irq_reg;
+	int ret = 0;
+
+	ahub_np = of_find_compatible_node(NULL, NULL, "allwinner,sunxi-ahub");
+	if (!ahub_np)
+		return -ENODEV;
+	ahub_pdev = of_find_device_by_node(ahub_np);
+	of_node_put(ahub_np);
+	if (!ahub_pdev)
+		return -EPROBE_DEFER;
+
+	regmap = dev_get_regmap(&ahub_pdev->dev, NULL);
+	if (!regmap) {
+		ret = -ENODEV;
+		goto out_put_device;
+	}
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		reset_gate = WHISPLAY_H616_APBIF_TX_RESET_GATE |
+			     WHISPLAY_H616_I2S0_RESET_GATE;
+		stream_mask = WHISPLAY_H616_I2S_GEN |
+			      WHISPLAY_H616_I2S_TXEN |
+			      WHISPLAY_H616_I2S_SDO0_EN;
+		ctl_reg = WHISPLAY_H616_APBIF0_TX_CTL;
+		irq_reg = WHISPLAY_H616_APBIF0_TX_IRQ_CTL;
+	} else {
+		reset_gate = WHISPLAY_H616_APBIF_RX_RESET_GATE |
+			     WHISPLAY_H616_I2S0_RESET_GATE;
+		stream_mask = WHISPLAY_H616_I2S_GEN |
+			      WHISPLAY_H616_I2S_RXEN |
+			      WHISPLAY_H616_I2S_SDI0_EN;
+		ctl_reg = WHISPLAY_H616_APBIF0_RX_CTL;
+		irq_reg = WHISPLAY_H616_APBIF0_RX_IRQ_CTL;
+	}
+
+	if (enabled) {
+		regmap_update_bits(regmap, WHISPLAY_H616_AHUB_RST,
+				   reset_gate, reset_gate);
+		regmap_update_bits(regmap, WHISPLAY_H616_AHUB_GAT,
+				   reset_gate, reset_gate);
+		regmap_update_bits(regmap, WHISPLAY_H616_I2S0_CTL,
+				   stream_mask, stream_mask);
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+			regmap_update_bits(regmap,
+					   WHISPLAY_H616_APBIF0_TXFIFO_CTL,
+					   WHISPLAY_H616_APBIF_FIFO_FLUSH,
+					   WHISPLAY_H616_APBIF_FIFO_FLUSH);
+		regmap_update_bits(regmap, ctl_reg,
+				   WHISPLAY_H616_APBIF_START,
+				   WHISPLAY_H616_APBIF_START);
+		regmap_update_bits(regmap, irq_reg,
+				   WHISPLAY_H616_APBIF_DRQ,
+				   WHISPLAY_H616_APBIF_DRQ);
+	} else {
+		regmap_update_bits(regmap, irq_reg,
+				   WHISPLAY_H616_APBIF_DRQ, 0);
+		regmap_update_bits(regmap, ctl_reg,
+				   WHISPLAY_H616_APBIF_START, 0);
+		regmap_update_bits(regmap, WHISPLAY_H616_I2S0_CTL,
+				   stream_mask & ~WHISPLAY_H616_I2S_GEN, 0);
+	}
+
+out_put_device:
+	put_device(&ahub_pdev->dev);
+	return ret;
+}
+
+static struct snd_soc_dai *whisplay_h616_find_ahub_dai(
+					struct snd_soc_pcm_runtime *rtd)
+{
+	struct snd_soc_dai_link_component dlc = { 0 };
+	struct device_node *np;
+	struct snd_soc_dai *dai;
+
+	np = of_parse_phandle(rtd->card->dev->of_node,
+			      "whisplay,ahub-daudio", 0);
+	if (!np)
+		return NULL;
+
+	dlc.of_node = np;
+	dai = snd_soc_find_dai(&dlc);
+	of_node_put(np);
+	return dai;
+}
+
+static int whisplay_h616_configure_apbif(
+					struct snd_pcm_substream *substream,
+					struct snd_pcm_hw_params *params)
+{
+	struct platform_device *ahub_pdev;
+	struct device_node *ahub_np;
+	struct regmap *regmap;
+	unsigned int word_size;
+	unsigned int channels;
+	int ret = 0;
+
+	switch (params_format(params)) {
+	case SNDRV_PCM_FORMAT_S16_LE:
+		word_size = 3;
+		break;
+	case SNDRV_PCM_FORMAT_S24_LE:
+		word_size = 5;
+		break;
+	case SNDRV_PCM_FORMAT_S32_LE:
+		word_size = 7;
+		break;
+	default:
+		return -EINVAL;
+	}
+	channels = params_channels(params) - 1;
+
+	ahub_np = of_find_compatible_node(NULL, NULL, "allwinner,sunxi-ahub");
+	if (!ahub_np)
+		return -ENODEV;
+	ahub_pdev = of_find_device_by_node(ahub_np);
+	of_node_put(ahub_np);
+	if (!ahub_pdev)
+		return -EPROBE_DEFER;
+
+	regmap = dev_get_regmap(&ahub_pdev->dev, NULL);
+	if (!regmap) {
+		ret = -ENODEV;
+		goto out_put_device;
+	}
+
+	/*
+	 * sunxi_ahub_daudio_init() normally sets the frame geometry from the
+	 * DT pcm_lrck_period/slot_width_select properties.  Since this DAI is
+	 * discovered out-of-band rather than being a component of the card's
+	 * DAI link, its DAI probe (and therefore that initializer) is never
+	 * called.  A reset value here describes a one-bit frame: TXEN is set,
+	 * but I2S0 never clocks data out and APBIF0 fills after one DMA burst.
+	 * Mirror the vendor initializer for two 32-bit slots.
+	 */
+	regmap_update_bits(regmap, WHISPLAY_H616_I2S0_FMT0,
+			   WHISPLAY_H616_I2S_LRCK_WIDTH |
+			   WHISPLAY_H616_I2S_LRCK_PERIOD_MASK |
+			   WHISPLAY_H616_I2S_SAMPLE_RES_MASK |
+			   WHISPLAY_H616_I2S_SLOT_WIDTH_MASK,
+			   ((WHISPLAY_H616_SLOT_WIDTH - 1) << 8) |
+			   (word_size << 4) |
+			   ((WHISPLAY_H616_SLOT_WIDTH / 4) - 1));
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		regmap_update_bits(regmap, WHISPLAY_H616_APBIF0_TX_CTL,
+				   WHISPLAY_H616_APBIF_WORD_SIZE_MASK |
+				   WHISPLAY_H616_APBIF_CHANNELS_MASK,
+				   (word_size << 16) | (channels << 8));
+		regmap_update_bits(regmap, WHISPLAY_H616_APBIF0_TXFIFO_CTL,
+				   WHISPLAY_H616_APBIF_TX_PACK_MODE,
+				   WHISPLAY_H616_APBIF_TX_PACK_MODE);
+		/*
+		 * The pin-facing AHUB DAUDIO DAI is not a component of this
+		 * DAI link, so ASoC never calls its hw_params callback.  Mirror
+		 * the vendor callback here; without an enabled output slot I2S0
+		 * cannot drain APBIF0, the FIFO fills after one DMA burst, and
+		 * userspace remains blocked with a stationary PCM hw_ptr.
+		 */
+		regmap_update_bits(regmap, WHISPLAY_H616_I2S0_CHCFG,
+				   WHISPLAY_H616_I2S_TX_CHANNELS_MASK,
+				   channels);
+		regmap_update_bits(regmap, WHISPLAY_H616_I2S0_OUT_SLOT0,
+				   WHISPLAY_H616_I2S_SLOT_COUNT_MASK |
+				   WHISPLAY_H616_I2S_SLOT_ENABLE_MASK,
+				   (channels << 16) |
+				   ((1U << params_channels(params)) - 1));
+	} else {
+		regmap_update_bits(regmap, WHISPLAY_H616_APBIF0_RX_CTL,
+				   WHISPLAY_H616_APBIF_WORD_SIZE_MASK |
+				   WHISPLAY_H616_APBIF_CHANNELS_MASK,
+				   (word_size << 16) | (channels << 8));
+		regmap_update_bits(regmap, WHISPLAY_H616_APBIF0_RXFIFO_CTL,
+				   WHISPLAY_H616_APBIF_RX_PACK_MODE_MASK, 1);
+		regmap_update_bits(regmap, WHISPLAY_H616_I2S0_CHCFG,
+				   WHISPLAY_H616_I2S_RX_CHANNELS_MASK,
+				   channels << 4);
+		regmap_update_bits(regmap, WHISPLAY_H616_I2S0_IN_SLOT,
+				   WHISPLAY_H616_I2S_SLOT_COUNT_MASK,
+				   channels << 16);
+	}
+
+out_put_device:
+	put_device(&ahub_pdev->dev);
+	return ret;
+}
+
 static int whisplay_dai_hw_params(struct snd_pcm_substream *substream,
 				  struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = whisplay_substream_to_rtd(substream);
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
+	struct snd_soc_dai *ahub_dai;
 	const char *mclk_fs_property;
 	unsigned int bclk_ratio;
 	unsigned int rate;
@@ -1341,42 +1584,45 @@ static int whisplay_dai_hw_params(struct snd_pcm_substream *substream,
 		if (rate != WHISPLAY_H616_RATE)
 			return -EINVAL;
 
-		ret = snd_soc_dai_set_pll(cpu_dai, substream->stream, 0,
-					  WHISPLAY_H616_PLL_RATE,
-					  WHISPLAY_H616_MODULE_RATE);
+		/*
+		 * The vendor H616 topology separates the DMA-facing APBIF CPU DAI
+		 * from the pin-facing AHUB DAUDIO DAI.  The former is the link CPU
+		 * and PCM platform; configure clocks and wire format on the latter.
+		 */
+		ahub_dai = whisplay_h616_find_ahub_dai(rtd);
+		if (!ahub_dai)
+			return dev_err_probe(rtd->dev, -ENODEV,
+					     "H616 AHUB DAUDIO DAI is unavailable\n");
+
+		ret = snd_soc_dai_set_sysclk(ahub_dai, 0,
+					     WHISPLAY_H616_MODULE_RATE, 0);
 		if (ret)
 			return dev_err_probe(rtd->dev, ret,
-					     "Failed to set H616 AHUB PLL\n");
+					     "Failed to set H616 AHUB clock\n");
 
-		ret = snd_soc_dai_set_sysclk(cpu_dai, 0, 0,
-					     SND_SOC_CLOCK_OUT);
-		if (ret && ret != -ENOTSUPP)
-			return ret;
-
-		bclk_ratio = WHISPLAY_H616_PLL_RATE /
-			     (rate * WHISPLAY_H616_SLOTS *
-			      WHISPLAY_H616_SLOT_WIDTH);
-		ret = snd_soc_dai_set_bclk_ratio(cpu_dai, bclk_ratio);
-		if (ret && ret != -ENOTSUPP)
-			return ret;
-
-		ret = snd_soc_dai_set_fmt(cpu_dai, rtd->dai_link->dai_fmt);
-		if (ret && ret != -ENOTSUPP)
-			return ret;
+		ret = snd_soc_dai_set_fmt(ahub_dai, rtd->dai_link->dai_fmt);
+		if (ret)
+			return dev_err_probe(rtd->dev, ret,
+					     "Failed to set H616 AHUB format\n");
 		ret = snd_soc_dai_set_fmt(codec_dai, rtd->dai_link->dai_fmt);
 		if (ret && ret != -ENOTSUPP)
 			return ret;
 
-		ret = snd_soc_dai_set_tdm_slot(cpu_dai, 0, 0,
-					       WHISPLAY_H616_SLOTS,
-					       WHISPLAY_H616_SLOT_WIDTH);
-		if (ret && ret != -ENOTSUPP)
-			return ret;
+		bclk_ratio = WHISPLAY_H616_MODULE_RATE / rate;
+		ret = snd_soc_dai_set_clkdiv(ahub_dai, 0, bclk_ratio);
+		if (ret)
+			return dev_err_probe(rtd->dev, ret,
+					     "Failed to set H616 AHUB clock divider\n");
 
 		ret = whisplay_h616_set_ahub_routes();
 		if (ret)
 			return dev_err_probe(rtd->dev, ret,
 					     "Failed to route H616 AHUB0\n");
+
+		ret = whisplay_h616_configure_apbif(substream, params);
+		if (ret)
+			return dev_err_probe(rtd->dev, ret,
+					     "Failed to configure H616 APBIF0\n");
 		return 0;
 	}
 
@@ -1468,6 +1714,33 @@ static int whisplay_dai_hw_params(struct snd_pcm_substream *substream,
 
 static int whisplay_dai_trigger(struct snd_pcm_substream *substream, int cmd)
 {
+	struct snd_soc_pcm_runtime *rtd = whisplay_substream_to_rtd(substream);
+	bool sunxi_h616;
+	int ret;
+
+	sunxi_h616 = of_property_read_bool(rtd->card->dev->of_node,
+					  "whisplay,sunxi-h616-ahub");
+	if (sunxi_h616) {
+		switch (cmd) {
+		case SNDRV_PCM_TRIGGER_START:
+		case SNDRV_PCM_TRIGGER_RESUME:
+		case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+			ret = whisplay_h616_set_stream_enabled(substream, true);
+			if (ret)
+				return ret;
+			break;
+		case SNDRV_PCM_TRIGGER_STOP:
+		case SNDRV_PCM_TRIGGER_SUSPEND:
+		case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+			ret = whisplay_h616_set_stream_enabled(substream, false);
+			if (ret)
+				return ret;
+			break;
+		default:
+			break;
+		}
+	}
+
 	if (whisplay_active_chip != WHISPLAY_CHIP_WM8960 ||
 	    substream->stream != SNDRV_PCM_STREAM_CAPTURE)
 		return 0;

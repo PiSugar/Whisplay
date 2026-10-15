@@ -4,6 +4,7 @@ import os
 import re
 import socket
 import time
+import glob
 
 
 PISUGAR_SOCKET_CANDIDATES = (
@@ -31,6 +32,28 @@ PISUGAR_DEFAULT_SHELL_PLACEHOLDERS = {
     "echo doublepress",
     "double echo doublepress",
 }
+
+
+def _pisugar_i2c_bus_candidates() -> list[int]:
+    """Return likely PiSugar buses, preferring MQ Quad's 40-pin I2C1.
+
+    The 5.16 MQ Quad vendor image dynamically exposes H616 I2C1 as Linux bus
+    zero, while Raspberry Pi uses bus one.
+    """
+    candidates: list[int] = []
+    override = os.environ.get("WHISPLAY_PISUGAR_I2C_BUS", "").strip()
+    if override.isdigit():
+        candidates.append(int(override))
+    for class_path in glob.glob("/sys/class/i2c-adapter/i2c-*"):
+        of_node = os.path.realpath(os.path.join(class_path, "device", "of_node"))
+        if of_node.endswith("/i2c@5002400"):
+            name = os.path.basename(class_path)
+            number = name.removeprefix("i2c-")
+            if number.isdigit() and int(number) not in candidates:
+                candidates.append(int(number))
+    if PISUGAR3_I2C_BUS not in candidates:
+        candidates.append(PISUGAR3_I2C_BUS)
+    return candidates
 
 
 class PiSugarManager:
@@ -64,25 +87,29 @@ class PiSugarManager:
         """Detect PiSugar 3 using its raw power-button status register."""
         try:
             import smbus  # type: ignore
-
-            bus = smbus.SMBus(PISUGAR3_I2C_BUS)
         except Exception:
             return False
 
-        self.pisugar3_bus = bus
-        pressed = self._read_pisugar3_power_button_pressed()
-        if pressed is None:
+        for bus_number in _pisugar_i2c_bus_candidates():
             try:
-                bus.close()
+                bus = smbus.SMBus(bus_number)
             except Exception:
-                pass
-            self.pisugar3_bus = None
-            return False
+                continue
+            self.pisugar3_bus = bus
+            pressed = self._read_pisugar3_power_button_pressed()
+            if pressed is None:
+                try:
+                    bus.close()
+                except Exception:
+                    pass
+                self.pisugar3_bus = None
+                continue
 
-        self.pisugar3_power_button_last_state = pressed
-        self.pisugar3_power_button_pressed_at = time.monotonic() if pressed else None
-        self.pisugar3_power_button_available = True
-        return True
+            self.pisugar3_power_button_last_state = pressed
+            self.pisugar3_power_button_pressed_at = time.monotonic() if pressed else None
+            self.pisugar3_power_button_available = True
+            return True
+        return False
 
     def close(self):
         if self.pisugar3_bus is not None:

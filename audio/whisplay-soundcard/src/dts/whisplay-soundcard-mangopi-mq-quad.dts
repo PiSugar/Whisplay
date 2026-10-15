@@ -1,0 +1,214 @@
+/*
+ * Whisplay overlay for MangoPi MQ Quad (Allwinner H616).
+ *
+ * Header wiring:
+ *   PIN_3  SDA  -> I2C1_SDA (PI8)
+ *   PIN_5  SCL  -> I2C1_SCL (PI7)
+ *   PIN_12 BCLK -> I2S0_BCLK (PI1)
+ *   PIN_35 LRCK -> I2S0_LRCK (PI2)
+ *   PIN_38 SDI  -> I2S0_DIN0 (PI4)
+ *   PIN_40 SDO  -> I2S0_DOUT0 (PI3)
+ *   PIN_19 MOSI -> SPI1_MOSI (PH7)
+ *   PIN_21 MISO -> SPI1_MISO (PH8)
+ *   PIN_23 SCLK -> SPI1_CLK  (PH6)
+ *   PIN_24 CS0  -> SPI1_CS0  (PH5)
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "allwinner,sun50i-h616";
+
+	fragment@0 {
+		target = <&pio>;
+		__overlay__ {
+			whisplay_i2c1_pins: whisplay-i2c1-pins {
+				pins = "PI7", "PI8";
+				function = "i2c1";
+				bias-disable;
+			};
+
+			whisplay_i2s0_clk_pins: whisplay-i2s0-clk-pins {
+				pins = "PI1", "PI2";
+				function = "i2s0";
+				drive-strength = <20>;
+				bias-disable;
+			};
+
+			whisplay_i2s0_dout_pin: whisplay-i2s0-dout-pin {
+				pins = "PI3";
+				function = "i2s0_dout0";
+				drive-strength = <20>;
+				bias-disable;
+			};
+
+			whisplay_i2s0_din_pin: whisplay-i2s0-din-pin {
+				pins = "PI4";
+				function = "i2s0_din0";
+				drive-strength = <20>;
+				bias-disable;
+			};
+
+			whisplay_spi1_pins: whisplay-spi1-pins {
+				pins = "PH5", "PH6", "PH7", "PH8";
+				function = "spi1";
+				drive-strength = <20>;
+				bias-disable;
+			};
+		};
+	};
+
+	fragment@1 {
+		target = <&spi1>;
+		__overlay__ {
+			pinctrl-names = "default";
+			pinctrl-0 = <&whisplay_spi1_pins>;
+			status = "okay";
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			spidev@0 {
+				compatible = "rohm,dh2228fv";
+				reg = <0>;
+				spi-max-frequency = <48000000>;
+				status = "okay";
+			};
+		};
+	};
+
+	fragment@2 {
+		target-path = "/soc";
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			/*
+			 * Orange Pi OS 3.0.8's 5.16.17 H616 kernel does not
+			 * include sunxi-snd-plat-ahub.  Its external TDM DAIs use
+			 * the vendor sunxi-ahub-daudio binding instead.
+			 */
+			whisplay_ahub0: whisplay-ahub0@5097000 {
+				#sound-dai-cells = <0>;
+				compatible = "allwinner,sunxi-ahub-daudio";
+				reg = <0x05097000 0xadf>;
+				clocks = <&ccu 0x5f>, <&ccu 0x5b>,
+					 <&ccu 0x5c>, <&ccu 0x5e>;
+				clock-names = "apb", "audio-codec-1x",
+					      "audio-codec-4x", "audio-hub";
+				tdm_num = <0>;
+				pinconfig = <1>;
+				mclk_div = <1>;
+				pcm_lrck_period = <32>;
+				slot_width_select = <32>;
+				frametype = <0>;
+				tdm_config = <1>;
+				signal_inversion = <1>;
+				daudio_master = <4>;
+				audio_format = <1>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&whisplay_i2s0_clk_pins
+					     &whisplay_i2s0_dout_pin
+					     &whisplay_i2s0_din_pin>;
+				status = "okay";
+			};
+		};
+	};
+
+	fragment@3 {
+		target-path = "/";
+		__overlay__ {
+			es8389_mclk: es8389-mclk {
+				compatible = "fixed-clock";
+				#clock-cells = <0>;
+				clock-frequency = <24576000>;
+				clock-output-names = "es8389-mclk";
+			};
+
+			es8389_vddd: es8389-vddd {
+				compatible = "regulator-fixed";
+				regulator-name = "es8389-vddd";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-always-on;
+			};
+
+			es8389_vdda: es8389-vdda {
+				compatible = "regulator-fixed";
+				regulator-name = "es8389-vdda";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-always-on;
+			};
+
+			whisplay_sound: whisplay-sound {
+				compatible = "pisugar,whisplay-soundcard";
+				i2s-controller = <&ahub_cpudai0>;
+				whisplay,ahub-daudio = <&whisplay_ahub0>;
+				whisplay,es8389-codec = <&codec_es8389>;
+				whisplay,es8389-sysclk = <24576000>;
+				whisplay,wm8960-codec = <&codec_wm8960>;
+				whisplay,sunxi-h616-ahub;
+				whisplay,force-48k;
+				whisplay,no-continuous-clock;
+				status = "okay";
+			};
+		};
+	};
+
+	fragment@4 {
+		target = <&i2c1>;
+		__overlay__ {
+			pinctrl-names = "default";
+			pinctrl-0 = <&whisplay_i2c1_pins>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			codec_es8389: whisplay@10 {
+				compatible = "pisugar,whisplay";
+				reg = <0x10>;
+				#sound-dai-cells = <0>;
+				clocks = <&es8389_mclk>;
+				clock-names = "mclk";
+				vddd-supply = <&es8389_vddd>;
+				vdda-supply = <&es8389_vdda>;
+				everest,mclk-src = /bits/ 8 <0x40>;
+				status = "okay";
+			};
+
+			/*
+			 * ES8389 may sample its address-select pin as 0x12 after a
+			 * warm reset.  Keep both possible clients instantiated; only
+			 * the address which acknowledges will bind to the driver.
+			 */
+			codec_es8389_alt: whisplay@12 {
+				compatible = "pisugar,whisplay";
+				reg = <0x12>;
+				#sound-dai-cells = <0>;
+				clocks = <&es8389_mclk>;
+				clock-names = "mclk";
+				vddd-supply = <&es8389_vddd>;
+				vdda-supply = <&es8389_vdda>;
+				everest,mclk-src = /bits/ 8 <0x40>;
+				status = "okay";
+			};
+
+			codec_wm8960: wm8960@1a {
+				compatible = "wlf,wm8960";
+				reg = <0x1a>;
+				#sound-dai-cells = <0>;
+				wlf,shared-lrclk;
+				status = "okay";
+			};
+		};
+	};
+
+	/* The Whisplay card owns APBIF0; avoid a second machine card binding it. */
+	fragment@5 {
+		target = <&sndahub>;
+		__overlay__ {
+			status = "disabled";
+		};
+	};
+};

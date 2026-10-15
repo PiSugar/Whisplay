@@ -9,6 +9,7 @@ This project provides comprehensive driver support for the **PiSugar Whisplay Ha
 **Supported Platforms:**
 - Raspberry Pi (all models with 40-pin header)
 - [Orange Pi Zero 2W](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-2W.html) (H618; official Debian Bookworm 1.0.2 / Linux 6.1.31)
+- [MangoPi MQ Quad](https://linux-sunxi.org/MangoPi_MQ-Quad) (Allwinner H616)
 - [Orange Pi Zero 3W](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-3W.html) (Allwinner A733; official Debian Bookworm 1.0.0 / Linux 6.6.98)
 - [Radxa ZERO 3W](https://radxa.com/products/zeros/zero3w/) (RK3566)
 - [Radxa Cubie A7Z](https://radxa.com/products/cubie/a7z/) (Allwinner A733)
@@ -143,7 +144,7 @@ The repo root is organized by responsibility:
   * **Install result**: the installer writes `~/.whisplay-daemon/settings.json` and seeds the default example app JSON files into `~/.whisplay-daemon/app/`
 #### 2. Unified Audio Driver
 
-  * **Source**: Raspberry Pi, Orange Pi Zero 2W/3W, Radxa ZERO 3W, and Radxa Cubie A7Z use the bundled unified Whisplay sound card driver in `audio/whisplay-soundcard/`, compatible with WM8960 and ES8389 codec variants.
+  * **Source**: Raspberry Pi, Orange Pi Zero 2W/3W, MangoPi MQ Quad, Radxa ZERO 3W, and Radxa Cubie A7Z use the bundled unified Whisplay sound card driver in `audio/whisplay-soundcard/`, compatible with WM8960 and ES8389 codec variants.
 
   * **Legacy driver**: Older driver support is kept on the `support/wm8960` branch. If you need the legacy driver, check out that branch before installing.
 
@@ -152,6 +153,7 @@ The repo root is organized by responsibility:
     - **Raspberry Pi**: Run `script/install_raspberry_pi.sh`
     - **Orange Pi Zero 2W**: Run `script/install_orangepi_zero2w.sh`
     - **Orange Pi Zero 3W**: Run `script/install_orangepi_zero3w.sh`
+    - **MangoPi MQ Quad**: Run `script/install_mangopi_mq_quad.sh`
     - **Radxa ZERO 3W**: Run `script/install_radxa_zero3w.sh`
     - **Radxa Cubie A7Z**: Run `script/install_radxa_cubie_a7z.sh`
 
@@ -163,6 +165,8 @@ The repo root is organized by responsibility:
     sudo bash script/install_orangepi_zero2w.sh
     # For Orange Pi Zero 3W:
     sudo bash script/install_orangepi_zero3w.sh
+    # For MangoPi MQ Quad:
+    sudo bash script/install_mangopi_mq_quad.sh
     # For Radxa ZERO 3W:
     sudo bash script/install_radxa_zero3w.sh
     # For Radxa Cubie A7Z:
@@ -176,6 +180,7 @@ The repo root is organized by responsibility:
 #### 4. Device Tree Overlays
 
   * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-orangepi-zero2w.dts` - unified H618 overlay using I2C1 on pins 3/5 and AHUB/I2S0 on pins 12/35/38/40. The installer also enables the official `pi-i2c1` and `spi1-cs0-spidev` overlays (SPI1 CS0 on header pins 19/21/23/24) and adds the Whisplay user overlay to `/boot/orangepiEnv.txt`.
+  * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-mangopi-mq-quad.dts` - unified H616 overlay enabling I2C1 and AHUB/I2S0 for audio plus SPI1 CS0 for the LCD on the 40-pin header. The installer adds it to `user_overlays` in `/boot/orangepiEnv.txt`.
   * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-orangepi-zero3w.dts` - unified A733 overlay using TWI0 on pins 3/5 and I2S0 on pins 12/35/38/40. The installer enables SPI3 CS0 for the LCD. I2S0 MCLK/PB4 is intentionally not routed because header pin 7 is reserved for LCD reset.
   * **Orange Pi OS 1.0.2 headers**: the vendor image does not publish an installable headers package. On exactly `6.1.31-sun50iw9`, the installer downloads a pinned, checksum-verified headers archive so it can build the unified module. Other Orange Pi kernel versions must provide matching headers in `/lib/modules/$(uname -r)/build`.
   * **Orange Pi Zero 3W headers**: on the official `6.6.98-sun60iw2` image, the installer downloads a pinned, checksum-verified A733 Linux 6.6.98 headers package and adjusts its kernel release for the vendor kernel before building the modules.

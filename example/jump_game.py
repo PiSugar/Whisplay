@@ -20,6 +20,7 @@ runtime_dir = os.path.abspath(os.path.join(current_dir, "..", "runtime"))
 if runtime_dir not in sys.path:
     sys.path.append(runtime_dir)
 
+from pillow_compat import draw_rounded_rectangle
 from whisplay_client import create_whisplay_hardware
 
 import select
@@ -381,7 +382,7 @@ class FastRenderer:
         body_color = (75, 52, 118, 255)
         body_shadow = (58, 40, 96, 255)
         head_color = (36, 36, 48, 255)
-        draw.rounded_rectangle((base_left, top + 10, base_right, height - 8), radius=8, fill=body_color)
+        draw_rounded_rectangle(draw, (base_left, top + 10, base_right, height - 8), radius=8, fill=body_color)
         draw.rectangle((base_left + JUMPER_W // 2, top + 10, base_right, height - 8), fill=body_shadow)
         head_offset = 4 if lean else 0
         draw.ellipse((base_left - 2 + head_offset, top - 2, base_right + 2 + head_offset, top + 22), fill=head_color)
@@ -475,12 +476,12 @@ class FastRenderer:
         image = Image.new("RGBA", (SCREEN_WIDTH, SCREEN_HEIGHT), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
         if state == "ready":
-            draw.rounded_rectangle((20, 82, SCREEN_WIDTH - 20, 176), radius=14, fill=(24, 36, 60, 156), outline=(255, 255, 255, 220), width=2)
+            draw_rounded_rectangle(draw, (20, 82, SCREEN_WIDTH - 20, 176), radius=14, fill=(24, 36, 60, 156), outline=(255, 255, 255, 220), width=2)
             draw.text((80, 94), "Jump", fill=(255, 226, 138, 255), font=self.title_font)
             draw.text((42, 126), "Hold to charge", fill=(234, 240, 252, 255), font=self.body_font)
             draw.text((36, 148), "Release to jump", fill=(234, 240, 252, 255), font=self.body_font)
         elif state == "game_over":
-            draw.rounded_rectangle((26, 86, SCREEN_WIDTH - 26, 190), radius=14, fill=(62, 26, 30, 226), outline=(255, 212, 110, 255), width=2)
+            draw_rounded_rectangle(draw, (26, 86, SCREEN_WIDTH - 26, 190), radius=14, fill=(62, 26, 30, 226), outline=(255, 212, 110, 255), width=2)
             draw.text((48, 100), "Game Over", fill=(255, 212, 110, 255), font=self.title_font)
             draw.text((58, 136), f"score  {score}", fill=(252, 242, 222, 255), font=self.body_font)
             draw.text((58, 158), f"best   {best_score}", fill=(252, 242, 222, 255), font=self.body_font)

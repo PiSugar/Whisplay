@@ -9,7 +9,7 @@ DAEMON_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if DAEMON_DIR not in sys.path:
     sys.path.insert(0, DAEMON_DIR)
 
-from daemon_pisugar import PiSugarManager
+from daemon_pisugar import PiSugarManager, _pisugar_i2c_bus_candidates
 
 
 class FakeSMBus:
@@ -29,6 +29,15 @@ class FakeSMBus:
 
 
 class PiSugar3PowerButtonTests(unittest.TestCase):
+    def test_prefers_mangopi_header_i2c_controller(self):
+        class_path = "/sys/class/i2c-adapter/i2c-0"
+        with mock.patch("daemon_pisugar.glob.glob", return_value=[class_path]), \
+             mock.patch(
+                 "daemon_pisugar.os.path.realpath",
+                 return_value="/sys/firmware/devicetree/base/soc/i2c@5002400",
+             ):
+            self.assertEqual(_pisugar_i2c_bus_candidates(), [0, 1])
+
     def test_detects_pisugar3_from_power_button_status_register(self):
         bus = FakeSMBus(1)
         smbus = types.SimpleNamespace(SMBus=lambda number: bus)

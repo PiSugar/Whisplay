@@ -26,10 +26,10 @@ def get_ffmpeg_cmd(video_path, width, height):
     input_args = []
     vf_params = f'scale={width}:{height}:flags=neighbor'
 
-    if 'zero 2' in model or 'raspberry pi 3' in model:
+    if 'raspberry pi zero 2' in model or 'raspberry pi 3' in model:
         print(f"Device: {model.strip()} | Mode: Multi-thread")
         input_args = ['-threads', '4']
-    elif 'zero' in model:
+    elif 'raspberry pi zero' in model:
         print("Device: Pi Zero/W | Mode: HW Accel")
         input_args = ['-vcodec', 'h264_v4l2m2m']
     elif 'raspberry pi 4' in model or 'raspberry pi 5' in model:
@@ -60,6 +60,7 @@ def play_video(video_path, video_url=None):
         app_id=os.getenv("WHISPLAY_APP_ID", "whisplay-play-mp4"),
         display_name="Play MP4",
         icon="V",
+        priority=10,
         use_daemon_default_log=True,
     )
     board.set_backlight(100)

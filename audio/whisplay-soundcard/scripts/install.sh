@@ -86,6 +86,7 @@ detect_platform() {
     local compat=""
     local release=""
     local boot_env=""
+    local sdio_device=""
 
     [[ -r /etc/orangepi-release ]] && release="$(cat /etc/orangepi-release 2>/dev/null || true)"
     [[ -r /boot/orangepiEnv.txt ]] && boot_env="$(cat /boot/orangepiEnv.txt 2>/dev/null || true)"
@@ -96,6 +97,15 @@ detect_platform() {
     if [[ -r /proc/device-tree/compatible ]]; then
         compat="$(tr '\0' '\n' </proc/device-tree/compatible 2>/dev/null || true)"
     fi
+
+    # The MQ Quad Orange Pi 3.0.8 image reports OrangePi Zero2 in both model
+    # and release metadata. Its onboard RTL8723DS identifies the real board.
+    for sdio_device in /sys/bus/sdio/devices/*/device; do
+        if [[ -r "$sdio_device" ]] && grep -qi '^0xd723$' "$sdio_device"; then
+            echo "mangopi_mq_quad"
+            return 0
+        fi
+    done
 
     if echo "$release" | grep -qi '^BOARD=orangepizero3w$' || \
        echo "$boot_env" | grep -qi 'orangepi-zero3w\.dtb'; then
@@ -118,6 +128,11 @@ detect_platform() {
     if [[ "$model" == *"OrangePi Zero2 W"* ]] || \
        echo "$compat" | grep -qi "xunlong,orangepi-zero2w"; then
         echo "orangepi_zero2w"
+        return 0
+    fi
+    if [[ "${model^^}" == *"MQ-QUAD"* ]] || \
+       echo "$compat" | grep -qi "mangopi.*mq.*quad\|widora.*mq.*quad"; then
+        echo "mangopi_mq_quad"
         return 0
     fi
     if [[ "$model" == *"Cubie"* ]] || echo "$compat" | grep -qi "cubie-a7z"; then
@@ -291,7 +306,8 @@ ensure_wm8960_codec() {
 
     [[ "$PLATFORM" == "radxa_cubie_a7z" || \
        "$PLATFORM" == "orangepi_zero2w" || \
-       "$PLATFORM" == "orangepi_zero3w" ]] || return 0
+       "$PLATFORM" == "orangepi_zero3w" || \
+       "$PLATFORM" == "mangopi_mq_quad" ]] || return 0
 
     module_path="$(find "/lib/modules/$(uname -r)" -name 'snd-soc-wm8960.ko*' \
         -print -quit 2>/dev/null || true)"
@@ -475,6 +491,29 @@ install_overlay() {
                 fi
             else
                 echo 'user_overlays=whisplay-soundcard-orangepi-zero3w' >>"$boot_cfg"
+            fi
+            grep -q '^i2c-dev$' /etc/modules 2>/dev/null || echo 'i2c-dev' >>/etc/modules
+            grep -q '^snd-soc-wm8960$' /etc/modules 2>/dev/null || echo 'snd-soc-wm8960' >>/etc/modules
+            grep -q '^snd-soc-whisplay-soundcard$' /etc/modules 2>/dev/null || \
+                echo 'snd-soc-whisplay-soundcard' >>/etc/modules
+            ;;
+        mangopi_mq_quad)
+            dts="$SRC/dts/whisplay-soundcard-mangopi-mq-quad.dts"
+            dtbo="/boot/overlay-user/whisplay-soundcard-mangopi-mq-quad.dtbo"
+            boot_cfg="/boot/orangepiEnv.txt"
+            mkdir -p /boot/overlay-user
+            dtc -I dts -O dtb -@ -o "$dtbo" "$dts"
+
+            [[ -f "$boot_cfg" ]] || {
+                echo "Missing MangoPi boot environment: $boot_cfg" >&2
+                exit 1
+            }
+            if grep -q '^user_overlays=' "$boot_cfg"; then
+                if ! awk '$1 == "user_overlays" { for (i = 2; i <= NF; i++) if ($i == "whisplay-soundcard-mangopi-mq-quad") found = 1 } END { exit !found }' FS='[= ]' "$boot_cfg"; then
+                    sed -i '/^user_overlays=/ s/$/ whisplay-soundcard-mangopi-mq-quad/' "$boot_cfg"
+                fi
+            else
+                echo 'user_overlays=whisplay-soundcard-mangopi-mq-quad' >>"$boot_cfg"
             fi
             grep -q '^i2c-dev$' /etc/modules 2>/dev/null || echo 'i2c-dev' >>/etc/modules
             grep -q '^snd-soc-wm8960$' /etc/modules 2>/dev/null || echo 'snd-soc-wm8960' >>/etc/modules

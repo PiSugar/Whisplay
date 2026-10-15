@@ -9,6 +9,7 @@
 **支持平台：**
 - Raspberry Pi（所有带 40-pin 排针的型号）
 - [Orange Pi Zero 2W](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-2W.html)（H618；官方 Debian Bookworm 1.0.2 / Linux 6.1.31）
+- [MangoPi MQ Quad](https://linux-sunxi.org/MangoPi_MQ-Quad)（全志 H616）
 - [Orange Pi Zero 3W](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-3W.html)（Allwinner A733；官方 Debian Bookworm 1.0.0 / Linux 6.6.98）
 - [Radxa ZERO 3W](https://radxa.com/products/zeros/zero3w/) (RK3566)
 - [Radxa Cubie A7Z](https://radxa.com/products/cubie/a7z/) (Allwinner A733)
@@ -138,7 +139,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
   * **安装结果**: 安装脚本会写入 `~/.whisplay-daemon/settings.json`，并把默认示例 app 的 JSON 同步到 `~/.whisplay-daemon/app/`
 #### 2. 统一声卡驱动
 
-  * **来源**: Raspberry Pi、Orange Pi Zero 2W/3W、Radxa ZERO 3W 和 Radxa Cubie A7Z 均使用本工程内置的统一 Whisplay 声卡驱动 `audio/whisplay-soundcard/`，兼容 WM8960 和 ES8389 两种 codec 变体。
+  * **来源**: Raspberry Pi、Orange Pi Zero 2W/3W、MangoPi MQ Quad、Radxa ZERO 3W 和 Radxa Cubie A7Z 均使用本工程内置的统一 Whisplay 声卡驱动 `audio/whisplay-soundcard/`，兼容 WM8960 和 ES8389 两种 codec 变体。
 
   * **旧版驱动**: 旧版驱动位于 `support/wm8960` 分支。如有需要，可以先检出该分支再进行安装。
 
@@ -147,6 +148,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
     - **Raspberry Pi**: 运行 `script/install_raspberry_pi.sh`
     - **Orange Pi Zero 2W**: 运行 `script/install_orangepi_zero2w.sh`
     - **Orange Pi Zero 3W**: 运行 `script/install_orangepi_zero3w.sh`
+    - **MangoPi MQ Quad**: 运行 `script/install_mangopi_mq_quad.sh`
     - **Radxa ZERO 3W**: 运行 `script/install_radxa_zero3w.sh`
     - **Radxa Cubie A7Z**: 运行 `script/install_radxa_cubie_a7z.sh`
 
@@ -158,6 +160,8 @@ tail -f ~/.whisplay-daemon/daemon-app.log
     sudo bash script/install_orangepi_zero2w.sh
     # Orange Pi Zero 3W:
     sudo bash script/install_orangepi_zero3w.sh
+    # MangoPi MQ Quad:
+    sudo bash script/install_mangopi_mq_quad.sh
     # Radxa ZERO 3W:
     sudo bash script/install_radxa_zero3w.sh
     # Radxa Cubie A7Z:
@@ -172,6 +176,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
 #### 4. 设备树 Overlay
 
   * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-orangepi-zero2w.dts`：H618 专用统一 overlay，音频 I2C1 使用物理 3/5 脚，AHUB/I2S0 使用物理 12/35/38/40 脚。安装器还会启用官方 `pi-i2c1`、`spi1-cs0-spidev` overlay（40-pin 物理 19/21/23/24 脚上的 SPI1 CS0），并把 Whisplay user overlay 写入 `/boot/orangepiEnv.txt`。
+  * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-mangopi-mq-quad.dts`：H616 专用统一 overlay，启用音频所需的 I2C1、AHUB/I2S0，以及 LCD 所需的 40-pin SPI1 CS0；安装器会将其写入 `/boot/orangepiEnv.txt` 的 `user_overlays`。
   * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-orangepi-zero3w.dts`：A733 专用统一 overlay，音频 TWI0 使用物理 3/5 脚，I2S0 使用物理 12/35/38/40 脚，安装器会为 LCD 启用 SPI3 CS0。I2S0 MCLK/PB4 不会被占用，因为物理 pin 7 必须保留给 LCD reset。
   * **Orange Pi OS 1.0.2 内核头文件**：官方镜像仓库没有可安装的 headers 包。在内核严格为 `6.1.31-sun50iw9` 时，安装器会下载固定版本且经过 SHA-256 校验的 headers 归档来编译统一模块；其他内核版本需要自行在 `/lib/modules/$(uname -r)/build` 提供匹配头文件。
   * **Orange Pi Zero 3W 内核头文件**：在官方 `6.6.98-sun60iw2` 镜像上，安装器会下载固定版本并校验 SHA-256 的 A733 Linux 6.6.98 headers 包，调整 kernel release 后再构建模块。

@@ -19,6 +19,7 @@ RUNTIME_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "runtime"))
 if RUNTIME_DIR not in sys.path:
     sys.path.append(RUNTIME_DIR)
 
+from pillow_compat import draw_rounded_rectangle
 from whisplay_client import create_whisplay_hardware
 
 
@@ -43,6 +44,7 @@ class RunTestFlow:
             app_id=os.getenv("WHISPLAY_APP_ID", "whisplay-run-test"),
             display_name="Run Test",
             icon="T",
+            priority=10,
             use_daemon_default_log=True,
         )
         self.board.set_backlight(70)
@@ -299,8 +301,8 @@ class RunTestFlow:
         content_width = width - 48
 
         panel = (12, 16, width - 12, height - 16)
-        draw.rounded_rectangle(panel, radius=18, fill=(20, 28, 40), outline=(40, 55, 72), width=2)
-        draw.rounded_rectangle((20, 22, width - 20, 58), radius=12, fill=accent)
+        draw_rounded_rectangle(draw, panel, radius=18, fill=(20, 28, 40), outline=(40, 55, 72), width=2)
+        draw_rounded_rectangle(draw, (20, 22, width - 20, 58), radius=12, fill=accent)
 
         current_step = self.step_index + 1 if step_override is None else step_override
         step_label = f"STEP {max(1, current_step)}/{len(self.steps)}"
@@ -356,7 +358,7 @@ class RunTestFlow:
 
         if footer_lines:
             footer_top = height - 22 - footer_height
-            draw.rounded_rectangle((20, footer_top, width - 20, height - 22), radius=12, fill=(28, 37, 50))
+            draw_rounded_rectangle(draw, (20, footer_top, width - 20, height - 22), radius=12, fill=(28, 37, 50))
             footer_y = footer_top + 8
             for line in footer_lines[:3]:
                 draw.text((28, footer_y), line, fill=(150, 205, 255), font=footer_font)
@@ -427,7 +429,7 @@ class RunTestFlow:
         image = Image.new("RGB", (width, height), (10, 14, 22))
         draw = ImageDraw.Draw(image)
 
-        draw.rounded_rectangle((12, 16, width - 12, height - 16), radius=18, fill=(20, 28, 40), outline=(40, 55, 72), width=2)
+        draw_rounded_rectangle(draw, (12, 16, width - 12, height - 16), radius=18, fill=(20, 28, 40), outline=(40, 55, 72), width=2)
         if self._logo_image is not None:
             logo = self._logo_image
             logo_x = (width - logo.width) // 2
@@ -438,7 +440,7 @@ class RunTestFlow:
 
         countdown_text = f"Test will start in {seconds_left}s..."
         countdown_box = (24, 196, width - 24, 244)
-        draw.rounded_rectangle(countdown_box, radius=14, fill=(228, 236, 245))
+        draw_rounded_rectangle(draw, countdown_box, radius=14, fill=(228, 236, 245))
         count_color = (16, 22, 30)
         count_font = self.body_compact_font
         lines = self._wrap_text(draw, countdown_text, count_font, width - 72)

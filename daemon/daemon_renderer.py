@@ -21,6 +21,45 @@ WIFI_LEVEL_ICON_FILES = {
 }
 
 
+def _draw_rounded_rectangle(
+    draw: ImageDraw.ImageDraw,
+    bounds,
+    radius: int,
+    fill,
+    outline=None,
+    width: int = 1,
+):
+    """Draw a rounded rectangle on both current and Bullseye-era Pillow."""
+    if hasattr(draw, "rounded_rectangle"):
+        draw.rounded_rectangle(bounds, radius=radius, fill=fill, outline=outline, width=width)
+        return
+
+    def draw_solid(box, corner_radius, color):
+        x0, y0, x1, y1 = box
+        corner_radius = max(0, min(int(corner_radius), int((x1 - x0) // 2), int((y1 - y0) // 2)))
+        if corner_radius == 0:
+            draw.rectangle(box, fill=color)
+            return
+        draw.rectangle((x0 + corner_radius, y0, x1 - corner_radius, y1), fill=color)
+        draw.rectangle((x0, y0 + corner_radius, x1, y1 - corner_radius), fill=color)
+        diameter = corner_radius * 2
+        draw.ellipse((x0, y0, x0 + diameter, y0 + diameter), fill=color)
+        draw.ellipse((x1 - diameter, y0, x1, y0 + diameter), fill=color)
+        draw.ellipse((x0, y1 - diameter, x0 + diameter, y1), fill=color)
+        draw.ellipse((x1 - diameter, y1 - diameter, x1, y1), fill=color)
+
+    x0, y0, x1, y1 = bounds
+    if outline is None:
+        draw_solid(bounds, radius, fill)
+        return
+
+    outline_width = max(1, int(width))
+    draw_solid(bounds, radius, outline)
+    if fill is not None and x1 - x0 > outline_width * 2 and y1 - y0 > outline_width * 2:
+        inner = (x0 + outline_width, y0 + outline_width, x1 - outline_width, y1 - outline_width)
+        draw_solid(inner, max(0, radius - outline_width), fill)
+
+
 class DesktopRenderer:
     def __init__(self, board, script_dir: str):
         self.board = board
@@ -124,7 +163,13 @@ class DesktopRenderer:
         draw.text((text_x, text_y), label, font=self.battery_font, fill=text_color)
         return body_width + head_width
 
-    def _draw_status_icons(self, draw: ImageDraw.ImageDraw, wifi_signal_level: int | None, battery_level: int | None):
+    def _draw_status_icons(
+        self,
+        image: Image.Image,
+        draw: ImageDraw.ImageDraw,
+        wifi_signal_level: int | None,
+        battery_level: int | None,
+    ):
         items: list[tuple[str, object]] = []
         if isinstance(battery_level, int):
             items.append(("battery", max(0, min(100, battery_level))))
@@ -150,7 +195,7 @@ class DesktopRenderer:
             else:
                 width = payload.width
                 icon_x = cursor_x - width
-                draw._image.paste(payload, (icon_x, 7), payload)
+                image.paste(payload, (icon_x, 7), payload)
             cursor_x = icon_x - icon_gap
 
     def _draw_legend_pill(
@@ -162,11 +207,8 @@ class DesktopRenderer:
         height: int,
         fill: tuple[int, int, int],
     ) -> int:
-        draw.rounded_rectangle(
-            (x, y, x + width, y + height),
-            radius=height // 2,
-            fill=fill,
-        )
+        bounds = (x, y, x + width, y + height)
+        _draw_rounded_rectangle(draw, bounds, radius=height // 2, fill=fill)
         return width
 
     def _draw_desktop_legend(self, draw: ImageDraw.ImageDraw, x: int, y: int):
@@ -206,7 +248,7 @@ class DesktopRenderer:
     ):
         image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (7, 11, 18))
         draw = ImageDraw.Draw(image)
-        self._draw_status_icons(draw, wifi_signal_level, battery_level)
+        self._draw_status_icons(image, draw, wifi_signal_level, battery_level)
 
         top_margin = 6
         left = 14
@@ -253,7 +295,8 @@ class DesktopRenderer:
             modal_w, modal_h = 188, 64
             modal_x = (SCREEN_WIDTH - modal_w) // 2
             modal_y = (SCREEN_HEIGHT - modal_h) // 2
-            draw.rounded_rectangle(
+            _draw_rounded_rectangle(
+                draw,
                 (modal_x, modal_y, modal_x + modal_w, modal_y + modal_h),
                 radius=10,
                 fill=(16, 28, 40),
@@ -316,7 +359,7 @@ class DesktopRenderer:
 
         card_y = 68
         card_h = LIST_VISIBLE_COUNT * LIST_ITEM_ROW_HEIGHT + 16
-        draw.rounded_rectangle((10, card_y, SCREEN_WIDTH - 10, card_y + card_h), radius=12, fill=(15, 24, 36))
+        _draw_rounded_rectangle(draw, (10, card_y, SCREEN_WIDTH - 10, card_y + card_h), radius=12, fill=(15, 24, 36))
         if not items:
             draw.text((left, card_y + 20), "No items", fill=(255, 200, 120), font=self.body_font)
         else:
@@ -352,7 +395,7 @@ class DesktopRenderer:
                 y += LIST_ITEM_ROW_HEIGHT
 
         status_y = card_y + card_h + 12
-        draw.rounded_rectangle((10, status_y, SCREEN_WIDTH - 10, status_y + 42), radius=10, fill=(18, 30, 44))
+        _draw_rounded_rectangle(draw, (10, status_y, SCREEN_WIDTH - 10, status_y + 42), radius=10, fill=(18, 30, 44))
         status_fill = (255, 218, 96) if busy else (156, 214, 255)
         draw.text((left, status_y + 6), "Status", fill=(255, 255, 255), font=self.small_font)
         if detail_lines:
@@ -379,17 +422,17 @@ class DesktopRenderer:
         draw.text((left, top), title, fill=(255, 255, 255), font=self.title_font)
         draw.text((left, top + 22), subtitle[:24], fill=(130, 180, 230), font=self.small_font)
 
-        draw.rounded_rectangle((10, 56, SCREEN_WIDTH - 10, 104), radius=12, fill=(18, 28, 42))
+        _draw_rounded_rectangle(draw, (10, 56, SCREEN_WIDTH - 10, 104), radius=12, fill=(18, 28, 42))
         draw.text((left, 64), "Password", fill=(255, 255, 255), font=self.small_font)
         display_password = password[-24:] if password else "<empty>"
         draw.text((left, 82), display_password, fill=(120, 255, 140), font=self.body_font)
 
-        draw.rounded_rectangle((10, 116, SCREEN_WIDTH - 10, 196), radius=12, fill=(17, 28, 39))
+        _draw_rounded_rectangle(draw, (10, 116, SCREEN_WIDTH - 10, 196), radius=12, fill=(17, 28, 39))
         draw.text((left, 126), "External keyboard", fill=(255, 255, 255), font=self.small_font)
         draw.text((left, 148), f"{password_length} chars typed", fill=(255, 214, 94), font=self.title_font)
         draw.text((left, 176), "Enter connect  Esc cancel", fill=(118, 136, 156), font=self.small_font)
 
-        draw.rounded_rectangle((10, 208, SCREEN_WIDTH - 10, 250), radius=10, fill=(18, 30, 44))
+        _draw_rounded_rectangle(draw, (10, 208, SCREEN_WIDTH - 10, 250), radius=10, fill=(18, 30, 44))
         draw.text((left, 216), status[:30], fill=(156, 214, 255), font=self.small_font)
         draw.text((left, 258), "Backspace delete", fill=(90, 106, 124), font=self.small_font)
 
