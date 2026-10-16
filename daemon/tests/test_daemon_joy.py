@@ -5,6 +5,7 @@ import os
 import sys
 import tempfile
 import threading
+import time
 import types
 import unittest
 from types import SimpleNamespace
@@ -90,10 +91,78 @@ class JoyInteractionTests(unittest.TestCase):
             daemon._on_joystick_pressed(direction)
         self.assertEqual(daemon.actions, [])
 
+    def test_all_directions_navigate_wifi_screen_keyboard(self):
+        daemon = self.make_daemon()
+        daemon.foreground_app_id = "whisplay-wifi"
+        daemon.internal_apps = SimpleNamespace(
+            is_internal_app=lambda _app_id: True,
+            text_input_active=lambda: True,
+        )
+        for direction in ("up", "right", "down", "left", "center"):
+            daemon._on_joystick_pressed(direction)
+        self.assertEqual(
+            daemon.actions,
+            [
+                "keyboard_up",
+                "keyboard_right",
+                "keyboard_down",
+                "keyboard_left",
+                "keyboard_select",
+            ],
+        )
+
+    def test_hold_cancels_keyboard_before_button_release_and_flashes_red(self):
+        daemon = self.make_daemon()
+        daemon.joy_mode = True
+        daemon.foreground_app_id = "whisplay-wifi"
+        app = SimpleNamespace(app_id="whisplay-wifi", exit_gesture="")
+        daemon.apps = {app.app_id: app}
+        handled = []
+        text_input_active = [True]
+
+        def handle_keyboard_action(_app_id, action):
+            handled.append(action)
+            if action == "keyboard_cancel":
+                text_input_active[0] = False
+
+        daemon.internal_apps = SimpleNamespace(
+            is_internal_app=lambda _app_id: True,
+            text_input_active=lambda: text_input_active[0],
+            handle_keyboard_action=handle_keyboard_action,
+            exit_requested=False,
+            consume_dirty=lambda: True,
+        )
+        rgb = []
+        daemon.board = SimpleNamespace(
+            set_rgb=lambda *color: rgb.append(color),
+            button_pressed=lambda: True,
+        )
+        daemon.pisugar = SimpleNamespace(poll_home_trigger=lambda: False)
+        daemon._recent_release_times = []
+        daemon._foreground_long_press_fired = False
+        daemon._keyboard_hold_cancel_fired = False
+        daemon._render_internal_app = lambda: None
+
+        daemon._button_press_started_at = time.time() - 0.1
+        daemon._on_button_released()
+
+        text_input_active[0] = True
+        daemon._button_press_started_at = 1.0
+        daemon._process_button_hold(now=2.0)
+        self.assertEqual(handled, ["keyboard_select", "keyboard_cancel"])
+        self.assertEqual(rgb[-1], (255, 0, 0))
+
+        # Releasing after the hold action must not select a list item.
+        daemon._on_button_released()
+        self.assertEqual(handled, ["keyboard_select", "keyboard_cancel"])
+
     def test_left_returns_from_internal_app(self):
         daemon = self.make_daemon()
         daemon.foreground_app_id = "internal-app"
-        daemon.internal_apps = SimpleNamespace(is_internal_app=lambda _app_id: True)
+        daemon.internal_apps = SimpleNamespace(
+            is_internal_app=lambda _app_id: True,
+            text_input_active=lambda: False,
+        )
         app = SimpleNamespace(app_id="internal-app")
         daemon.apps = {app.app_id: app}
         released = []

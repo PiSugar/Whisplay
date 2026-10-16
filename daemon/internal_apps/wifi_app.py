@@ -7,6 +7,43 @@ from daemon_models import AppRecord
 WIFI_APP_ID = "whisplay-wifi"
 
 
+@dataclass(frozen=True)
+class ScreenKey:
+    label: str
+    value: str = ""
+    shifted: str = ""
+    action: str = ""
+    width: float = 1.0
+
+
+SCREEN_KEYBOARD_ROWS = (
+    tuple(
+        ScreenKey(normal, normal, shifted)
+        for normal, shifted in zip("`1234567890-=", "~!@#$%^&*()_+")
+    ),
+    tuple(
+        ScreenKey(normal, normal, shifted)
+        for normal, shifted in zip("qwertyuiop[]\\", "QWERTYUIOP{}|")
+    ),
+    tuple(
+        ScreenKey(normal, normal, shifted)
+        for normal, shifted in zip("asdfghjkl;'", 'ASDFGHJKL:\"')
+    ),
+    (
+        ScreenKey("ABC", action="shift", width=2.0),
+        *(
+            ScreenKey(normal, normal, shifted)
+            for normal, shifted in zip("zxcvbnm,./", "ZXCVBNM<>?")
+        ),
+        ScreenKey("DEL", action="backspace", width=2.0),
+    ),
+    (
+        ScreenKey("SPACE", " ", " ", width=8.0),
+        ScreenKey("JOIN", action="submit", width=4.0),
+    ),
+)
+
+
 @dataclass
 class WifiNetwork:
     ssid: str
@@ -26,6 +63,9 @@ class WifiViewState:
     mode: str = "list"
     password_target_ssid: str = ""
     password_buffer: str = ""
+    keyboard_row: int = 1
+    keyboard_col: int = 0
+    keyboard_shifted: bool = False
 
 
 class WifiInternalApp:
@@ -52,6 +92,7 @@ class WifiInternalApp:
             self.state.mode = "list"
             self.state.password_target_ssid = ""
             self.state.password_buffer = ""
+            self._reset_screen_keyboard()
 
     def text_input_active(self) -> bool:
         with self._lock:
@@ -84,6 +125,7 @@ class WifiInternalApp:
                 self.state.mode = "input"
                 self.state.password_target_ssid = network.ssid
                 self.state.password_buffer = ""
+                self._reset_screen_keyboard()
                 self.state.status = f"Type password: {network.ssid}"
                 self._mark_dirty()
                 return
@@ -95,6 +137,9 @@ class WifiInternalApp:
     def handle_keyboard_action(self, action):
         with self._lock:
             if self.state.mode == "input":
+                if isinstance(action, str) and action.startswith("keyboard_"):
+                    self._handle_screen_keyboard_input(action.removeprefix("keyboard_"))
+                    return
                 self._handle_external_keyboard_input(action)
                 return
             total = len(self.state.networks) + 2
@@ -112,6 +157,23 @@ class WifiInternalApp:
     def view_model(self) -> dict:
         with self._lock:
             if self.state.mode == "input":
+                rows = []
+                for row_index, row in enumerate(SCREEN_KEYBOARD_ROWS):
+                    keys = []
+                    for col_index, key in enumerate(row):
+                        label = self._screen_key_label(key)
+                        keys.append(
+                            {
+                                "label": label,
+                                "width": key.width,
+                                "selected": (
+                                    row_index == self.state.keyboard_row
+                                    and col_index == self.state.keyboard_col
+                                ),
+                            }
+                        )
+                    rows.append(keys)
+                selected_key = self._selected_screen_key()
                 return {
                     "kind": "keyboard",
                     "title": "WiFi Password",
@@ -119,6 +181,10 @@ class WifiInternalApp:
                     "password": "*" * len(self.state.password_buffer),
                     "password_length": len(self.state.password_buffer),
                     "status": self.state.status,
+                    "screen_keyboard": True,
+                    "keyboard_rows": rows,
+                    "selected_key": self._screen_key_label(selected_key),
+                    "shifted": self.state.keyboard_shifted,
                 }
             items = [
                 {"title": "Back", "meta": "Return to desktop"},
@@ -170,10 +236,92 @@ class WifiInternalApp:
             self.state.password_buffer += action[1]
             self._mark_dirty()
 
+    def _reset_screen_keyboard(self):
+        self.state.keyboard_row = 1
+        self.state.keyboard_col = 0
+        self.state.keyboard_shifted = False
+
+    def _selected_screen_key(self) -> ScreenKey:
+        row = SCREEN_KEYBOARD_ROWS[self.state.keyboard_row]
+        self.state.keyboard_col = max(0, min(self.state.keyboard_col, len(row) - 1))
+        return row[self.state.keyboard_col]
+
+    def _screen_key_label(self, key: ScreenKey) -> str:
+        if key.action == "shift":
+            return "abc" if self.state.keyboard_shifted else "ABC"
+        if key.value == " ":
+            return key.label
+        if key.value:
+            return key.shifted if self.state.keyboard_shifted else key.value
+        return key.label
+
+    def _screen_key_center(self, row_index: int, col_index: int) -> float:
+        row = SCREEN_KEYBOARD_ROWS[row_index]
+        total_width = sum(key.width for key in row)
+        preceding_width = sum(key.width for key in row[:col_index])
+        return (preceding_width + row[col_index].width / 2) / total_width
+
+    def _move_screen_keyboard_vertical(self, delta: int):
+        current_center = self._screen_key_center(
+            self.state.keyboard_row, self.state.keyboard_col
+        )
+        target_row = (self.state.keyboard_row + delta) % len(SCREEN_KEYBOARD_ROWS)
+        target = SCREEN_KEYBOARD_ROWS[target_row]
+        target_col = min(
+            range(len(target)),
+            key=lambda index: abs(
+                self._screen_key_center(target_row, index) - current_center
+            ),
+        )
+        self.state.keyboard_row = target_row
+        self.state.keyboard_col = target_col
+
+    def _handle_screen_keyboard_input(self, action: str):
+        row = SCREEN_KEYBOARD_ROWS[self.state.keyboard_row]
+        if action == "left":
+            self.state.keyboard_col = (self.state.keyboard_col - 1) % len(row)
+            self._mark_dirty()
+            return
+        if action == "right":
+            self.state.keyboard_col = (self.state.keyboard_col + 1) % len(row)
+            self._mark_dirty()
+            return
+        if action == "up":
+            self._move_screen_keyboard_vertical(-1)
+            self._mark_dirty()
+            return
+        if action == "down":
+            self._move_screen_keyboard_vertical(1)
+            self._mark_dirty()
+            return
+        if action == "cancel":
+            self._cancel_password_input("Cancelled")
+            return
+        if action != "select":
+            return
+
+        key = self._selected_screen_key()
+        if key.action == "shift":
+            self.state.keyboard_shifted = not self.state.keyboard_shifted
+            self._mark_dirty()
+            return
+        if key.action == "backspace":
+            self.state.password_buffer = self.state.password_buffer[:-1]
+            self._mark_dirty()
+            return
+        if key.action == "submit":
+            self._handle_external_keyboard_input("submit")
+            return
+        self.state.password_buffer += (
+            key.shifted if self.state.keyboard_shifted else key.value
+        )
+        self._mark_dirty()
+
     def _cancel_password_input(self, status: str):
         self.state.mode = "list"
         self.state.password_target_ssid = ""
         self.state.password_buffer = ""
+        self._reset_screen_keyboard()
         self.state.status = status
         self._mark_dirty()
 
@@ -305,4 +453,3 @@ class WifiInternalApp:
             self.state.mode = "list"
         self._mark_dirty()
         self._refresh()
-

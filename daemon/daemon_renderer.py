@@ -68,6 +68,7 @@ class DesktopRenderer:
         self.title_font = self._load_font(TITLE_FONT_SIZE)
         self.body_font = self._load_font(16)
         self.small_font = self._load_font(14)
+        self.micro_font = self._load_font(9)
         self.battery_font = self._load_font(13)
         self.icon_dir = os.path.join(script_dir, "img")
         self._icon_cache: dict[tuple[str, int], Image.Image | None] = {}
@@ -527,6 +528,10 @@ class DesktopRenderer:
         self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
 
     def _render_keyboard(self, view_model: dict):
+        if self.joy_mode and view_model.get("screen_keyboard"):
+            self._render_screen_keyboard(view_model)
+            return
+
         image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (11, 16, 26))
         draw = ImageDraw.Draw(image)
 
@@ -554,6 +559,108 @@ class DesktopRenderer:
         _draw_rounded_rectangle(draw, (10, 208, SCREEN_WIDTH - 10, 250), radius=10, fill=(18, 30, 44))
         draw.text((left, 216), status[:30], fill=(156, 214, 255), font=self.small_font)
         draw.text((left, 258), "Backspace delete", fill=(90, 106, 124), font=self.small_font)
+
+        frame = image_to_rgb565_bytes(image)
+        self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
+
+    def _render_screen_keyboard(self, view_model: dict):
+        image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (9, 14, 24))
+        draw = ImageDraw.Draw(image)
+
+        title = str(view_model.get("title") or "WiFi Password")
+        subtitle = str(view_model.get("subtitle") or "Protected network")
+        password = str(view_model.get("password") or "")
+        password_length = int(view_model.get("password_length") or 0)
+        selected_key = str(view_model.get("selected_key") or "")
+        shifted = bool(view_model.get("shifted"))
+        rows = list(view_model.get("keyboard_rows") or [])
+
+        draw.text((10, 4), title, fill=(255, 255, 255), font=self.title_font)
+        draw.text((10, 25), subtitle[:25], fill=(126, 174, 220), font=self.small_font)
+
+        draw.rounded_rectangle((8, 45, 232, 78), radius=8, fill=(18, 29, 43))
+        display_password = password[-14:] if password else "<empty>"
+        draw.text((14, 53), display_password, fill=(120, 255, 140), font=self.body_font)
+
+        preview_box = (190, 42, 232, 81)
+        draw.rounded_rectangle(
+            preview_box,
+            radius=8,
+            fill=(40, 126, 190),
+            outline=(156, 228, 255),
+            width=2,
+        )
+        preview_font = self.body_font if len(selected_key) <= 2 else self.micro_font
+        preview_bbox = draw.textbbox((0, 0), selected_key, font=preview_font)
+        preview_width = preview_bbox[2] - preview_bbox[0]
+        preview_height = preview_bbox[3] - preview_bbox[1]
+        draw.text(
+            (
+                preview_box[0] + (preview_box[2] - preview_box[0] - preview_width) / 2,
+                preview_box[1] + (preview_box[3] - preview_box[1] - preview_height) / 2 - preview_bbox[1],
+            ),
+            selected_key,
+            fill=(255, 255, 255),
+            font=preview_font,
+        )
+
+        keyboard_x = 8
+        keyboard_y = 88
+        unit_width = 16
+        row_height = 22
+        row_gap = 3
+        max_units = 14.0
+        for row_index, row in enumerate(rows):
+            total_units = sum(float(key.get("width") or 1.0) for key in row)
+            cursor_x = keyboard_x + (max_units - total_units) * unit_width / 2
+            y = keyboard_y + row_index * (row_height + row_gap)
+            for key in row:
+                key_units = float(key.get("width") or 1.0)
+                key_width = key_units * unit_width - 2
+                selected = bool(key.get("selected"))
+                fill = (44, 150, 214) if selected else (23, 38, 54)
+                outline = (190, 240, 255) if selected else (54, 76, 96)
+                draw.rounded_rectangle(
+                    (cursor_x, y, cursor_x + key_width, y + row_height),
+                    radius=4,
+                    fill=fill,
+                    outline=outline,
+                    width=1,
+                )
+                label = str(key.get("label") or "")
+                bbox = draw.textbbox((0, 0), label, font=self.micro_font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                draw.text(
+                    (
+                        cursor_x + (key_width - text_width) / 2,
+                        y + (row_height - text_height) / 2 - bbox[1],
+                    ),
+                    label,
+                    fill=(255, 255, 255) if selected else (164, 184, 202),
+                    font=self.micro_font,
+                )
+                cursor_x += key_units * unit_width
+
+        mode_label = "ABC" if shifted else "abc"
+        draw.text(
+            (10, 218),
+            f"{password_length} chars  |  {mode_label}",
+            fill=(255, 214, 94),
+            font=self.small_font,
+        )
+        draw.text(
+            (10, 240),
+            "S1-S4 move   CENTER select",
+            fill=(132, 174, 206),
+            font=self.micro_font,
+        )
+        draw.text(
+            (10, 256),
+            "Hold Whisplay button: back",
+            fill=(92, 118, 142),
+            font=self.micro_font,
+        )
 
         frame = image_to_rgb565_bytes(image)
         self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)

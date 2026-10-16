@@ -68,7 +68,7 @@ bash run_test.sh
 The daemon now also ships with four built-in system entries:
 
 - `Bluetooth`: opens an internal page that scans nearby Bluetooth devices and lets you bind or unbind the selected device
-- `WiFi`: opens an internal page that scans nearby Wi-Fi networks and lets you connect; protected networks enter a single-button password page, and actual password input depends on an attached external keyboard
+- `WiFi`: opens an internal page that scans nearby Wi-Fi networks and lets you connect; Whisplay Joy provides an on-screen keyboard for protected-network passwords, while the original model supports an attached external keyboard
 - `Volume`: opens an internal page for speaker volume adjustment
 - `Power`: opens the Power Menu to lock the display, reboot, or shut down the device. Lock mode turns off the backlight and uses a blue breathing LED; press the Whisplay button to wake
 
@@ -155,7 +155,7 @@ The repo root is organized by responsibility:
   * **Commands**: `health.ping`, `app.register`, `app.list`, `app.launch`, `app.focus.acquire`, `app.focus.release`, `app.exit.request`, `framebuffer.acquire`, `backlight.set`, `led.set`, `led.fade`, `button.get_state`, `events.subscribe`
   * **Desktop behavior**: single click cycles registered apps, long press launches/foregrounds the selected app, and 4 rapid clicks request exit from the foreground app unless it registered `exit_gesture: "none"`
   * **Built-in system pages**: includes `Bluetooth`, `WiFi`, `Volume`, and `Power` entries rendered by the daemon itself, without spawning an external app process
-  * **Wi-Fi password input**: selecting a protected network enters a password input page; password entry depends on an attached external keyboard (arrow keys / Enter / Backspace / ESC)
+  * **Wi-Fi password input**: on Whisplay Joy, selecting a protected network opens a miniature QWERTY keyboard. S1/S2/S4/S3 move up/right/down/left, CENTER or a short press of the original Whisplay button selects the highlighted key, `ABC` switches letter/symbol case, `DEL` deletes, `SPACE` inserts a space, and `JOIN` connects. Holding the original Whisplay button leaves the keyboard as soon as the long-press threshold is reached and flashes the LED red; release is not required. The original Whisplay model continues to support an attached external keyboard (Enter / Backspace / ESC).
   * **PiSugar home integration**: the daemon first detects PiSugar 3 over I2C; when found, a power-button single click returns home and the PiSugar custom-button single-click event remains free. Other models continue to use `pisugar-server` and the `single`, `double`, or `long` gesture configured by `pisugar_home_button` in `~/.whisplay-daemon/settings.json`; set it to `none` to disable the integration
   * **Install as service**:
     ```shell

@@ -87,6 +87,7 @@ class WhisplayDaemon:
         self._button_press_started_at = 0.0
         self._recent_release_times: list[float] = []
         self._foreground_long_press_fired = False
+        self._keyboard_hold_cancel_fired = False
         self._last_status_poll_at = 0.0
         self._screen_locked = False
         self._lock_started_at = 0.0
@@ -154,17 +155,29 @@ class WhisplayDaemon:
                     self._launch_app(selected)
 
     def _on_joystick_pressed(self, direction: str):
+        keyboard_action = None
         with self.state_lock:
             if self._screen_locked:
                 return
             if self.foreground_app_id and not self.internal_apps.is_internal_app(self.foreground_app_id):
                 return
-            if direction == "left":
+            if self.foreground_app_id and self.internal_apps.text_input_active():
+                keyboard_action = {
+                    "up": "keyboard_up",
+                    "right": "keyboard_right",
+                    "down": "keyboard_down",
+                    "left": "keyboard_left",
+                    "center": "keyboard_select",
+                }.get(direction)
+            elif direction == "left":
                 if self.foreground_app_id:
                     app = self.apps.get(self.foreground_app_id)
                     if app is not None:
                         self._release_focus(app, "joy_left_back")
                 return
+        if keyboard_action is not None:
+            self._handle_keyboard_action(keyboard_action)
+            return
         action = {
             "up": "up",
             "down": "down",
@@ -385,6 +398,7 @@ class WhisplayDaemon:
         self.foreground_app_id = None
         self.exit_request = None
         self._foreground_long_press_fired = False
+        self._keyboard_hold_cancel_fired = False
         self.pending_launch_app_id = None
         self.pending_launch_started_at = 0.0
         self._render_desktop()
@@ -434,6 +448,7 @@ class WhisplayDaemon:
         self.pending_launch_started_at = 0.0
         self.exit_request = None
         self._foreground_long_press_fired = False
+        self._keyboard_hold_cancel_fired = False
         self._screen_locked = True
         self._lock_started_at = time.monotonic()
         self._last_lock_led_level = -1
@@ -448,6 +463,7 @@ class WhisplayDaemon:
         self._last_lock_led_level = -1
         self._button_press_started_at = 0.0
         self._foreground_long_press_fired = False
+        self._keyboard_hold_cancel_fired = False
         self.board.set_rgb(0, 0, 0)
         self.board.set_backlight(100)
         self._render_desktop()
@@ -562,6 +578,7 @@ class WhisplayDaemon:
                 return
             self._button_press_started_at = time.time()
             self._foreground_long_press_fired = False
+            self._keyboard_hold_cancel_fired = False
             if not self.foreground_app_id or self.internal_apps.is_internal_app(self.foreground_app_id):
                 self.board.set_rgb(0, 0, 255)
             if self.foreground_app_id and not self.internal_apps.is_internal_app(self.foreground_app_id):
@@ -581,6 +598,8 @@ class WhisplayDaemon:
             now = time.time()
             press_duration = now - self._button_press_started_at if self._button_press_started_at else 0
             self._button_press_started_at = 0.0
+            keyboard_hold_cancel_fired = self._keyboard_hold_cancel_fired
+            self._keyboard_hold_cancel_fired = False
 
             if self.foreground_app_id:
                 app = self.apps.get(self.foreground_app_id)
@@ -609,7 +628,21 @@ class WhisplayDaemon:
                     self._recent_release_times = []
                 if is_internal_app:
                     if self.joy_mode:
-                        self.internal_apps.handle_keyboard_action(self.foreground_app_id, "submit")
+                        if keyboard_hold_cancel_fired:
+                            pass
+                        elif self.internal_apps.text_input_active():
+                            action = (
+                                "keyboard_cancel"
+                                if press_duration >= BUTTON_LONG_PRESS_SEC
+                                else "keyboard_select"
+                            )
+                            self.internal_apps.handle_keyboard_action(
+                                self.foreground_app_id, action
+                            )
+                        else:
+                            self.internal_apps.handle_keyboard_action(
+                                self.foreground_app_id, "submit"
+                            )
                     else:
                         self.internal_apps.handle_button_release(
                             self.foreground_app_id,
@@ -640,6 +673,68 @@ class WhisplayDaemon:
             else:
                 self.selected_app_index = (self.selected_app_index + 1) % len(apps)
                 self._render_desktop()
+
+    def _process_button_hold(self, now: float | None = None):
+        """Handle actions that must fire while the physical button stays down."""
+        now = time.time() if now is None else now
+        if (
+            self._button_press_started_at <= 0
+            or now - self._button_press_started_at < BUTTON_LONG_PRESS_SEC
+        ):
+            return
+
+        if not self.board.button_pressed():
+            self._button_press_started_at = 0.0
+            self._foreground_long_press_fired = False
+            self._keyboard_hold_cancel_fired = False
+            if not self.foreground_app_id or self.internal_apps.is_internal_app(
+                self.foreground_app_id
+            ):
+                self.board.set_rgb(0, 0, 0)
+            return
+
+        joy_keyboard_active = (
+            self.joy_mode
+            and self.foreground_app_id
+            and self.internal_apps.is_internal_app(self.foreground_app_id)
+            and self.internal_apps.text_input_active()
+        )
+        if joy_keyboard_active and not self._keyboard_hold_cancel_fired:
+            self.internal_apps.handle_keyboard_action(
+                self.foreground_app_id, "keyboard_cancel"
+            )
+            self._keyboard_hold_cancel_fired = True
+            if self.internal_apps.consume_dirty():
+                self._render_internal_app()
+
+        if self._keyboard_hold_cancel_fired:
+            flash_on = int(now * 5) % 2 == 0
+            self.board.set_rgb(255, 0, 0) if flash_on else self.board.set_rgb(0, 0, 0)
+            return
+
+        legacy_long_press_active = (
+            not self.joy_mode
+            or (
+                self.foreground_app_id
+                and not self.internal_apps.is_internal_app(self.foreground_app_id)
+            )
+        )
+        if not legacy_long_press_active:
+            return
+        if self.foreground_app_id:
+            app = self.apps.get(self.foreground_app_id)
+            if (
+                app
+                and app.exit_gesture == EXIT_GESTURE_LONG_PRESS
+                and not self._foreground_long_press_fired
+            ):
+                self._request_exit(app, "long_press_exit")
+            elif self.internal_apps.is_internal_app(self.foreground_app_id):
+                flash_on = int(now * 5) % 2 == 0
+                self.board.set_rgb(0, 255, 0) if flash_on else self.board.set_rgb(0, 0, 0)
+        else:
+            flash_on = int(now * 5) % 2 == 0
+            self.board.set_rgb(0, 255, 0) if flash_on else self.board.set_rgb(0, 0, 0)
 
     def _render_loop(self):
         interval = 1.0 / RENDER_FPS
@@ -713,34 +808,7 @@ class WhisplayDaemon:
                     self.pending_launch_app_id = None
                     self.pending_launch_started_at = 0.0
                     self._render_desktop()
-                legacy_long_press_active = (
-                    not self.joy_mode
-                    or (
-                        self.foreground_app_id
-                        and not self.internal_apps.is_internal_app(self.foreground_app_id)
-                    )
-                )
-                if (
-                    legacy_long_press_active
-                    and self._button_press_started_at > 0
-                    and time.time() - self._button_press_started_at >= BUTTON_LONG_PRESS_SEC
-                ):
-                    if self.board.button_pressed():
-                        if self.foreground_app_id:
-                            app = self.apps.get(self.foreground_app_id)
-                            if app and app.exit_gesture == EXIT_GESTURE_LONG_PRESS and not self._foreground_long_press_fired:
-                                self._request_exit(app, "long_press_exit")
-                            elif self.internal_apps.is_internal_app(self.foreground_app_id):
-                                flash_on = int(time.time() * 5) % 2 == 0
-                                self.board.set_rgb(0, 255, 0) if flash_on else self.board.set_rgb(0, 0, 0)
-                        else:
-                            flash_on = int(time.time() * 5) % 2 == 0
-                            self.board.set_rgb(0, 255, 0) if flash_on else self.board.set_rgb(0, 0, 0)
-                    else:
-                        self._button_press_started_at = 0.0
-                        self._foreground_long_press_fired = False
-                        if not self.foreground_app_id or self.internal_apps.is_internal_app(self.foreground_app_id):
-                            self.board.set_rgb(0, 0, 0)
+                self._process_button_hold()
                 if self.exit_request is not None and time.time() >= self.exit_request["deadline"]:
                     app = self.apps.get(self.exit_request["app_id"])
                     if app and self.foreground_app_id == app.app_id:
