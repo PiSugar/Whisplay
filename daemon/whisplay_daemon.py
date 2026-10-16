@@ -602,6 +602,8 @@ class WhisplayDaemon:
         interval = 1.0 / RENDER_FPS
         while self.running:
             frame = None
+            app_id = None
+            framebuffer = None
             with self.state_lock:
                 app_id = self.foreground_app_id
                 app = self.apps.get(app_id) if app_id else None
@@ -609,10 +611,24 @@ class WhisplayDaemon:
                 if framebuffer is not None:
                     framebuffer.seek(0)
                     frame = framebuffer.read(FRAMEBUFFER_SIZE)
-            if frame is not None and frame != self.last_frame:
+            if frame is not None:
+                self._commit_foreground_frame(app_id, framebuffer, frame)
+            time.sleep(interval)
+
+    def _commit_foreground_frame(self, app_id, framebuffer, frame: bytes):
+        # Focus may have been released after the framebuffer was read.
+        # Serialize the final validity check and LCD write with focus
+        # transitions so a stale app frame cannot overwrite the desktop.
+        with self.state_lock:
+            current_app = self.apps.get(self.foreground_app_id) if self.foreground_app_id else None
+            if (
+                self.foreground_app_id == app_id
+                and current_app is not None
+                and current_app.framebuffer_mmap is framebuffer
+                and frame != self.last_frame
+            ):
                 self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
                 self.last_frame = frame
-            time.sleep(interval)
 
     def _monitor_loop(self):
         while self.running:

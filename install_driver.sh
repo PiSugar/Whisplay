@@ -9,6 +9,7 @@ detect_platform() {
   local compat=""
   local release=""
   local boot_env=""
+  local sdio_device=""
   [[ -r /etc/orangepi-release ]] && release="$(cat /etc/orangepi-release 2>/dev/null || true)"
   [[ -r /boot/orangepiEnv.txt ]] && boot_env="$(cat /boot/orangepiEnv.txt 2>/dev/null || true)"
   if [[ -r /proc/device-tree/model ]]; then
@@ -17,6 +18,16 @@ detect_platform() {
   if [[ -r /proc/device-tree/compatible ]]; then
     compat="$(tr '\0' '\n' < /proc/device-tree/compatible 2>/dev/null || true)"
   fi
+
+  # The commonly used MQ Quad Orange Pi 3.0.8 image identifies itself as an
+  # OrangePi Zero2. Its onboard RTL8723DS (SDIO device 024c:d723) provides the
+  # reliable distinction from a real Zero2 before platform dispatch.
+  for sdio_device in /sys/bus/sdio/devices/*/device; do
+    if [[ -r "$sdio_device" ]] && grep -qi '^0xd723$' "$sdio_device"; then
+      echo "mangopi_mq_quad"
+      return 0
+    fi
+  done
 
   if echo "$release" | grep -qi '^BOARD=orangepizero3w$' || \
       echo "$boot_env" | grep -qi 'orangepi-zero3w\.dtb'; then
@@ -30,6 +41,11 @@ detect_platform() {
   if [[ "$model" == *"OrangePi Zero2 W"* ]] || \
       echo "$compat" | grep -qi "xunlong,orangepi-zero2w"; then
     echo "orangepi_zero2w"
+    return 0
+  fi
+  if [[ "${model^^}" == *"MQ-QUAD"* ]] || \
+      echo "$compat" | grep -qi "mangopi.*mq.*quad\|widora.*mq.*quad"; then
+    echo "mangopi_mq_quad"
     return 0
   fi
   if echo "$compat" | grep -qi "cubie-a7z"; then
@@ -60,6 +76,9 @@ case "$platform" in
   orangepi_zero3w)
     exec bash "$SCRIPT_DIR/script/install_orangepi_zero3w.sh" "$@"
     ;;
+  mangopi_mq_quad)
+    exec bash "$SCRIPT_DIR/script/install_mangopi_mq_quad.sh" "$@"
+    ;;
   *)
     echo "Unsupported or unknown platform."
     echo "Use one of these manually if needed:"
@@ -68,6 +87,7 @@ case "$platform" in
     echo "  script/install_radxa_cubie_a7z.sh"
     echo "  script/install_orangepi_zero2w.sh"
     echo "  script/install_orangepi_zero3w.sh"
+    echo "  script/install_mangopi_mq_quad.sh"
     exit 1
     ;;
 esac

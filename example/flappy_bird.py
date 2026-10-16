@@ -20,6 +20,7 @@ runtime_dir = os.path.abspath(os.path.join(current_dir, "..", "runtime"))
 if runtime_dir not in sys.path:
     sys.path.append(runtime_dir)
 
+from pillow_compat import draw_rounded_rectangle
 from whisplay_client import create_whisplay_hardware
 
 import select
@@ -423,11 +424,11 @@ class FastFramebuffer:
         body_font = self._load_font(15)
         small_font = self._load_font(12)
         if state == "ready":
-            draw.rounded_rectangle((24, 90, SCREEN_WIDTH - 24, 168), radius=14, fill=(16, 44, 76, 220), outline=(255, 255, 255, 255), width=2)
+            draw_rounded_rectangle(draw, (24, 90, SCREEN_WIDTH - 24, 168), radius=14, fill=(16, 44, 76, 220), outline=(255, 255, 255, 255), width=2)
             draw.text((42, 102), "Flappy Bird", fill=(255, 236, 120, 255), font=title_font)
             draw.text((42, 135), "Press button to start", fill=(232, 242, 255, 255), font=body_font)
         elif state == "game_over":
-            draw.rounded_rectangle((26, 88, SCREEN_WIDTH - 26, 184), radius=14, fill=(56, 24, 22, 228), outline=(255, 206, 90, 255), width=2)
+            draw_rounded_rectangle(draw, (26, 88, SCREEN_WIDTH - 26, 184), radius=14, fill=(56, 24, 22, 228), outline=(255, 206, 90, 255), width=2)
             draw.text((42, 100), "Game Over", fill=(255, 218, 90, 255), font=title_font)
             draw.text((75, 134), f"score  {score}", fill=(255, 244, 220, 255), font=body_font)
             draw.text((75, 156), f"best   {best_score}", fill=(255, 244, 220, 255), font=body_font)
@@ -464,6 +465,7 @@ class FlappyBirdGame:
             display_name="Flappy Bird",
             icon="F",
             exit_gesture="long_press",
+            priority=20,
             use_daemon_default_log=True,
         )
         self.board.set_backlight(100)

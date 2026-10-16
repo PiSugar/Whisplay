@@ -9,6 +9,7 @@ This project provides comprehensive driver support for the **PiSugar Whisplay Ha
 **Supported Platforms:**
 - Raspberry Pi (all models with 40-pin header)
 - [Orange Pi Zero 2W](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-2W.html) (H618; official Debian Bookworm 1.0.2 / Linux 6.1.31)
+- [MangoPi MQ Quad](https://linux-sunxi.org/MangoPi_MQ-Quad) (Allwinner H616; tested on Orange Pi OS 3.0.8 / Linux `5.16.17-sun50iw9` with ES8389 and V1 WM8960)
 - [Orange Pi Zero 3W](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-3W.html) (Allwinner A733; official Debian Bookworm 1.0.0 / Linux 6.6.98)
 - [Radxa ZERO 3W](https://radxa.com/products/zeros/zero3w/) (RK3566)
 - [Radxa Cubie A7Z](https://radxa.com/products/cubie/a7z/) (Allwinner A733)
@@ -35,6 +36,18 @@ sudo reboot
 ```
 
 When Raspberry Pi boots with a programmed PiSugar Whisplay HAT EEPROM, the installer leaves `whisplay-soundcard` overlay loading to the EEPROM and removes any legacy manual `dtoverlay=whisplay-soundcard` config.
+
+#### MangoPi MQ Quad compatibility
+
+MangoPi MQ Quad support has been tested on the Orange Pi OS 3.0.8 Bullseye image with vendor kernel `5.16.17-sun50iw9`, using both ES8389 and V1 WM8960 Whisplay HATs. This image may identify the board as Orange Pi Zero2; use `sudo bash script/install_mangopi_mq_quad.sh` to explicitly select the MangoPi installer. Reboot after installation to load the module and overlay; do not hot-unbind the codec.
+
+- LCD, backlight, RGB LED, buttons, and the daemon desktop/app switching are supported. Jump Game and Flappy Bird were tested with sound enabled through repeated launch/exit cycles.
+- Real speaker playback and both microphone channels were verified, including simultaneous playback/capture, repeated device opens, and recovery after reboot. An external USB microphone independently confirmed speaker output; validation is not limited to DMA or digital loopback.
+- Audio uses the `whisplaysound` ALSA card at 48 kHz with two 32-bit I2S slots. S16_LE, S24_LE, and S32_LE SoC loopbacks passed channel mapping and tone-frequency checks. The HAT speaker is mono; stereo mapping is checked on the digital path.
+- Keep `libasound2-plugins` installed (included by the MangoPi installer) for game audio resampling. Install the optional daemon separately with `sudo bash daemon/install_whisplay_daemon_service.sh`.
+- V1 WM8960 requires `snd-soc-wm8960`, which this vendor kernel does not include. The installer builds it when missing; matching kernel headers must be available at `/lib/modules/$(uname -r)/build`. The machine driver uses the V1 HAT's 24 MHz oscillator with WM8960's automatic PLL configuration, rather than treating 24 MHz as a direct 48 kHz audio SYSCLK.
+
+These results apply to the tested HAT/vendor-kernel combinations. Other images and kernel versions have not been validated in this MangoPi regression run and may require additional adaptation. WM8960 `aplay` wall-clock time includes PLL lock/startup overhead; the regression tool separately measures the actual test-tone duration in the capture. `codec-loopback` is ES8389-only; use `soc-loopback` and `microphone` for WM8960.
 
 > ⚠️ **Important Hardware Warning (Orange Pi Zero 3W and Radxa Cubie A7Z)**
 > Orange Pi Zero 3W and Radxa Cubie A7Z **must be used with Whisplay V2 hardware**.
@@ -143,7 +156,7 @@ The repo root is organized by responsibility:
   * **Install result**: the installer writes `~/.whisplay-daemon/settings.json` and seeds the default example app JSON files into `~/.whisplay-daemon/app/`
 #### 2. Unified Audio Driver
 
-  * **Source**: Raspberry Pi, Orange Pi Zero 2W/3W, Radxa ZERO 3W, and Radxa Cubie A7Z use the bundled unified Whisplay sound card driver in `audio/whisplay-soundcard/`, compatible with WM8960 and ES8389 codec variants.
+  * **Source**: Raspberry Pi, Orange Pi Zero 2W/3W, MangoPi MQ Quad, Radxa ZERO 3W, and Radxa Cubie A7Z use the bundled unified Whisplay sound card driver in `audio/whisplay-soundcard/`, compatible with WM8960 and ES8389 codec variants.
 
   * **Legacy driver**: Older driver support is kept on the `support/wm8960` branch. If you need the legacy driver, check out that branch before installing.
 
@@ -152,6 +165,7 @@ The repo root is organized by responsibility:
     - **Raspberry Pi**: Run `script/install_raspberry_pi.sh`
     - **Orange Pi Zero 2W**: Run `script/install_orangepi_zero2w.sh`
     - **Orange Pi Zero 3W**: Run `script/install_orangepi_zero3w.sh`
+    - **MangoPi MQ Quad**: Run `script/install_mangopi_mq_quad.sh`
     - **Radxa ZERO 3W**: Run `script/install_radxa_zero3w.sh`
     - **Radxa Cubie A7Z**: Run `script/install_radxa_cubie_a7z.sh`
 
@@ -163,6 +177,8 @@ The repo root is organized by responsibility:
     sudo bash script/install_orangepi_zero2w.sh
     # For Orange Pi Zero 3W:
     sudo bash script/install_orangepi_zero3w.sh
+    # For MangoPi MQ Quad:
+    sudo bash script/install_mangopi_mq_quad.sh
     # For Radxa ZERO 3W:
     sudo bash script/install_radxa_zero3w.sh
     # For Radxa Cubie A7Z:
@@ -172,10 +188,12 @@ The repo root is organized by responsibility:
 #### 3. Bundled Unified Sound Card Driver
 
   * `audio/whisplay-soundcard/` - unified driver source, install scripts, ALSA config, and platform DTS overlays. The platform installers build and install it directly from this repository.
+  * **MangoPi MQ Quad / Linux 5.16**: the MQ overlay enables vendor-specific DMA-width/divider corrections and per-stream APBIF reset/FIFO initialization to prevent channel swaps after app switching. ES8389 is initialized after I2S clocks are active, retaining the HAT's onboard MCLK oscillator. These vendor workarounds are scoped to MangoPi and do not change other platforms' clock behavior. Run `sudo python3 audio/whisplay-soundcard/scripts/test-mangopi-audio.py microphone` on the board to save and analyze a real speaker-to-microphone recording. `soc-loopback` and `codec-loopback` test the digital paths; `--format S24_LE` / `--format S32_LE` exercise wider PCM containers. Tests temporarily stop and then restore the daemon, wait for daemon readiness, and restore digital loopback bits. The screen may be briefly blank while the daemon restarts.
 
 #### 4. Device Tree Overlays
 
   * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-orangepi-zero2w.dts` - unified H618 overlay using I2C1 on pins 3/5 and AHUB/I2S0 on pins 12/35/38/40. The installer also enables the official `pi-i2c1` and `spi1-cs0-spidev` overlays (SPI1 CS0 on header pins 19/21/23/24) and adds the Whisplay user overlay to `/boot/orangepiEnv.txt`.
+  * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-mangopi-mq-quad.dts` - unified H616 overlay enabling I2C1 and AHUB/I2S0 for audio plus SPI1 CS0 for the LCD on the 40-pin header. The installer adds it to `user_overlays` in `/boot/orangepiEnv.txt`.
   * `audio/whisplay-soundcard/src/dts/whisplay-soundcard-orangepi-zero3w.dts` - unified A733 overlay using TWI0 on pins 3/5 and I2S0 on pins 12/35/38/40. The installer enables SPI3 CS0 for the LCD. I2S0 MCLK/PB4 is intentionally not routed because header pin 7 is reserved for LCD reset.
   * **Orange Pi OS 1.0.2 headers**: the vendor image does not publish an installable headers package. On exactly `6.1.31-sun50iw9`, the installer downloads a pinned, checksum-verified headers archive so it can build the unified module. Other Orange Pi kernel versions must provide matching headers in `/lib/modules/$(uname -r)/build`.
   * **Orange Pi Zero 3W headers**: on the official `6.6.98-sun60iw2` image, the installer downloads a pinned, checksum-verified A733 Linux 6.6.98 headers package and adjusts its kernel release for the vendor kernel before building the modules.

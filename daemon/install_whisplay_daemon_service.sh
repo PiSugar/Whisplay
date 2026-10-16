@@ -18,15 +18,24 @@ configure_orangepi_device_access() {
   local compat=""
   local release=""
   local boot_env=""
+  local sdio_device=""
+  local is_mangopi_mq_quad=0
 
   if [ -r /proc/device-tree/compatible ]; then
     compat="$(tr '\0' '\n' </proc/device-tree/compatible 2>/dev/null || true)"
   fi
   [ -r /etc/orangepi-release ] && release="$(cat /etc/orangepi-release 2>/dev/null || true)"
   [ -r /boot/orangepiEnv.txt ] && boot_env="$(cat /boot/orangepiEnv.txt 2>/dev/null || true)"
+  for sdio_device in /sys/bus/sdio/devices/*/device; do
+    if [ -r "$sdio_device" ] && grep -qi '^0xd723$' "$sdio_device"; then
+      is_mangopi_mq_quad=1
+      break
+    fi
+  done
   if ! echo "$compat" | grep -qi 'xunlong,orangepi-zero2w' && \
      ! echo "$release" | grep -qi '^BOARD=orangepizero3w$' && \
-     ! echo "$boot_env" | grep -qi 'orangepi-zero3w\.dtb'; then
+     ! echo "$boot_env" | grep -qi 'orangepi-zero3w\.dtb\|whisplay-soundcard-mangopi-mq-quad' && \
+     [ "$is_mangopi_mq_quad" != "1" ]; then
     return 0
   fi
 
