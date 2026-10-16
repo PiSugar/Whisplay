@@ -322,7 +322,7 @@ ensure_wm8960_codec() {
 
     headers="/lib/modules/$(uname -r)/build"
     if [[ ! -d "$headers" ]]; then
-        echo "Missing kernel headers required to build the A733 WM8960 codec module." >&2
+        echo "Missing matching kernel headers required to build the WM8960 codec module for $PLATFORM." >&2
         return 1
     fi
 

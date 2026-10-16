@@ -148,6 +148,7 @@
 				whisplay,es8389-codec = <&codec_es8389>;
 				whisplay,es8389-sysclk = <24576000>;
 				whisplay,wm8960-codec = <&codec_wm8960>;
+				whisplay,wm8960-sysclk = <24000000>;
 				whisplay,sunxi-h616-ahub;
 				whisplay,h616-vendor-dma;
 				whisplay,force-48k;

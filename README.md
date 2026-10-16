@@ -9,7 +9,7 @@ This project provides comprehensive driver support for the **PiSugar Whisplay Ha
 **Supported Platforms:**
 - Raspberry Pi (all models with 40-pin header)
 - [Orange Pi Zero 2W](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-2W.html) (H618; official Debian Bookworm 1.0.2 / Linux 6.1.31)
-- [MangoPi MQ Quad](https://linux-sunxi.org/MangoPi_MQ-Quad) (Allwinner H616)
+- [MangoPi MQ Quad](https://linux-sunxi.org/MangoPi_MQ-Quad) (Allwinner H616; tested on Orange Pi OS 3.0.8 / Linux `5.16.17-sun50iw9` with ES8389 and V1 WM8960)
 - [Orange Pi Zero 3W](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-3W.html) (Allwinner A733; official Debian Bookworm 1.0.0 / Linux 6.6.98)
 - [Radxa ZERO 3W](https://radxa.com/products/zeros/zero3w/) (RK3566)
 - [Radxa Cubie A7Z](https://radxa.com/products/cubie/a7z/) (Allwinner A733)
@@ -36,6 +36,18 @@ sudo reboot
 ```
 
 When Raspberry Pi boots with a programmed PiSugar Whisplay HAT EEPROM, the installer leaves `whisplay-soundcard` overlay loading to the EEPROM and removes any legacy manual `dtoverlay=whisplay-soundcard` config.
+
+#### MangoPi MQ Quad compatibility
+
+MangoPi MQ Quad support has been tested on the Orange Pi OS 3.0.8 Bullseye image with vendor kernel `5.16.17-sun50iw9`, using both ES8389 and V1 WM8960 Whisplay HATs. This image may identify the board as Orange Pi Zero2; use `sudo bash script/install_mangopi_mq_quad.sh` to explicitly select the MangoPi installer. Reboot after installation to load the module and overlay; do not hot-unbind the codec.
+
+- LCD, backlight, RGB LED, buttons, and the daemon desktop/app switching are supported. Jump Game and Flappy Bird were tested with sound enabled through repeated launch/exit cycles.
+- Real speaker playback and both microphone channels were verified, including simultaneous playback/capture, repeated device opens, and recovery after reboot. An external USB microphone independently confirmed speaker output; validation is not limited to DMA or digital loopback.
+- Audio uses the `whisplaysound` ALSA card at 48 kHz with two 32-bit I2S slots. S16_LE, S24_LE, and S32_LE SoC loopbacks passed channel mapping and tone-frequency checks. The HAT speaker is mono; stereo mapping is checked on the digital path.
+- Keep `libasound2-plugins` installed (included by the MangoPi installer) for game audio resampling. Install the optional daemon separately with `sudo bash daemon/install_whisplay_daemon_service.sh`.
+- V1 WM8960 requires `snd-soc-wm8960`, which this vendor kernel does not include. The installer builds it when missing; matching kernel headers must be available at `/lib/modules/$(uname -r)/build`. The machine driver uses the V1 HAT's 24 MHz oscillator with WM8960's automatic PLL configuration, rather than treating 24 MHz as a direct 48 kHz audio SYSCLK.
+
+These results apply to the tested HAT/vendor-kernel combinations. Other images and kernel versions have not been validated in this MangoPi regression run and may require additional adaptation. WM8960 `aplay` wall-clock time includes PLL lock/startup overhead; the regression tool separately measures the actual test-tone duration in the capture. `codec-loopback` is ES8389-only; use `soc-loopback` and `microphone` for WM8960.
 
 > ⚠️ **Important Hardware Warning (Orange Pi Zero 3W and Radxa Cubie A7Z)**
 > Orange Pi Zero 3W and Radxa Cubie A7Z **must be used with Whisplay V2 hardware**.
@@ -176,7 +188,7 @@ The repo root is organized by responsibility:
 #### 3. Bundled Unified Sound Card Driver
 
   * `audio/whisplay-soundcard/` - unified driver source, install scripts, ALSA config, and platform DTS overlays. The platform installers build and install it directly from this repository.
-  * **MangoPi MQ Quad / Linux 5.16**: the MQ overlay enables a vendor-specific DMA-width/divider correction and initializes ES8389 after I2S clocks are active. The HAT's onboard MCLK oscillator is retained. `libasound2-plugins` is required for games using ALSA resampling. Run `sudo python3 audio/whisplay-soundcard/scripts/test-mangopi-audio.py microphone` on the board to save and analyze a real speaker-to-microphone recording. `soc-loopback` and `codec-loopback` test the digital paths; `--format S24_LE` / `--format S32_LE` exercise wider PCM containers. Tests temporarily stop and then restore the daemon; digital loopback bits are also restored.
+  * **MangoPi MQ Quad / Linux 5.16**: the MQ overlay enables vendor-specific DMA-width/divider corrections and per-stream APBIF reset/FIFO initialization to prevent channel swaps after app switching. ES8389 is initialized after I2S clocks are active, retaining the HAT's onboard MCLK oscillator. These vendor workarounds are scoped to MangoPi and do not change other platforms' clock behavior. Run `sudo python3 audio/whisplay-soundcard/scripts/test-mangopi-audio.py microphone` on the board to save and analyze a real speaker-to-microphone recording. `soc-loopback` and `codec-loopback` test the digital paths; `--format S24_LE` / `--format S32_LE` exercise wider PCM containers. Tests temporarily stop and then restore the daemon, wait for daemon readiness, and restore digital loopback bits. The screen may be briefly blank while the daemon restarts.
 
 #### 4. Device Tree Overlays
 

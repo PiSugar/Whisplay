@@ -206,6 +206,8 @@ static bool whisplay_is_public_control(const char *name)
 #define WM8960_BYPASS1 0x2d
 #define WM8960_BYPASS2 0x2e
 #define WM8960_CLASSD3 0x33
+/* snd-soc-wm8960 clock API: AUTO records MCLK without starting the PLL. */
+#define WM8960_SYSCLK_AUTO 2
 
 #define WM8960_POWER1_VMID_50K BIT(7)
 #define WM8960_POWER1_VREF BIT(6)
@@ -1210,6 +1212,7 @@ static int whisplay_dai_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
 	unsigned int mclk_rate;
+	unsigned int clk_id = 0;
 	u32 configured_rate;
 	int ret;
 
@@ -1222,6 +1225,22 @@ static int whisplay_dai_init(struct snd_soc_pcm_runtime *rtd)
 			mclk_rate = configured_rate;
 		else
 			mclk_rate = 24000000;
+
+		/*
+		 * The V1 HAT's 24 MHz oscillator is not an integer multiple of
+		 * 48 kHz. Let WM8960 derive its audio SYSCLK through the PLL.
+		 * AUTO only records the input here; the codec starts/configures
+		 * the PLL for the first stream and shares it with the second.
+		 * Keep other boards' existing clock selection unchanged.
+		 */
+		if (of_property_read_bool(rtd->card->dev->of_node,
+					  "whisplay,h616-vendor-dma")) {
+			clk_id = WM8960_SYSCLK_AUTO;
+			ret = snd_soc_dai_set_pll(codec_dai, clk_id, 0,
+						 mclk_rate, 0);
+			if (ret)
+				return ret;
+		}
 	} else if (!of_property_read_u32(rtd->card->dev->of_node,
 					 "whisplay,es8389-sysclk",
 					 &configured_rate)) {
@@ -1230,7 +1249,7 @@ static int whisplay_dai_init(struct snd_soc_pcm_runtime *rtd)
 		mclk_rate = 24576000;
 	}
 
-	ret = snd_soc_dai_set_sysclk(codec_dai, 0, mclk_rate,
+	ret = snd_soc_dai_set_sysclk(codec_dai, clk_id, mclk_rate,
 				      SND_SOC_CLOCK_IN);
 	if (ret && ret != -ENOTSUPP)
 		dev_warn(rtd->dev, "Failed to set codec sysclk: %d\n", ret);

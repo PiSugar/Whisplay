@@ -9,7 +9,7 @@
 **支持平台：**
 - Raspberry Pi（所有带 40-pin 排针的型号）
 - [Orange Pi Zero 2W](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-2W.html)（H618；官方 Debian Bookworm 1.0.2 / Linux 6.1.31）
-- [MangoPi MQ Quad](https://linux-sunxi.org/MangoPi_MQ-Quad)（全志 H616）
+- [MangoPi MQ Quad](https://linux-sunxi.org/MangoPi_MQ-Quad)（全志 H616；已在 Orange Pi OS 3.0.8 / Linux `5.16.17-sun50iw9`、ES8389 和 V1 WM8960 上验证）
 - [Orange Pi Zero 3W](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-3W.html)（Allwinner A733；官方 Debian Bookworm 1.0.0 / Linux 6.6.98）
 - [Radxa ZERO 3W](https://radxa.com/products/zeros/zero3w/) (RK3566)
 - [Radxa Cubie A7Z](https://radxa.com/products/cubie/a7z/) (Allwinner A733)
@@ -36,6 +36,18 @@ sudo reboot
 ```
 
 如果 Raspberry Pi 启动时检测到已烧录的 PiSugar Whisplay HAT EEPROM，安装脚本会让 EEPROM 负责自动加载 `whisplay-soundcard` overlay，并移除旧安装遗留的手动 `dtoverlay=whisplay-soundcard` 配置。
+
+#### MangoPi MQ Quad（芒果派）兼容性
+
+已在 Orange Pi OS 3.0.8 Bullseye 镜像、厂商内核 `5.16.17-sun50iw9` 上，分别使用 ES8389 和 V1 WM8960 版 Whisplay HAT 完成真机验证。该镜像可能将主板识别为 Orange Pi Zero2，可使用 `sudo bash script/install_mangopi_mq_quad.sh` 明确选择芒果派安装器。安装后请重启加载模块和 overlay，不要热解绑 codec。
+
+- 支持 LCD、背光、RGB LED、按键及 daemon 桌面/app 切换；Jump Game 和 Flappy Bird 已通过启用音效后的反复启动、退出测试。
+- 已验证扬声器实际发声、两个麦克风通道有效录音，以及同时播放/录音、反复开关音频设备和重启后恢复。另用外部 USB 麦克风独立确认扬声器输出，并非仅通过 DMA 或数字回环判断音频正常。
+- 使用 `whisplaysound` ALSA 声卡，音频总线为 48 kHz、两个 32-bit I2S slot。S16_LE、S24_LE、S32_LE 的 SoC 回环均通过声道映射和测试音频率检查。HAT 扬声器为单声道，左右声道映射在数字链路上验证。
+- 游戏音频重采样需要保留 `libasound2-plugins`（芒果派安装器已包含）。可选 daemon 需另行运行 `sudo bash daemon/install_whisplay_daemon_service.sh` 安装。
+- V1 WM8960 需要 `snd-soc-wm8960`，此厂商内核未附带该模块。安装器会在缺失时构建，前提是 `/lib/modules/$(uname -r)/build` 已提供匹配的内核头文件。统一驱动使用 V1 HAT 的 24 MHz 振荡器与 WM8960 自动 PLL 配置，不再将 24 MHz 直接作为 48 kHz 音频 SYSCLK。
+
+以上结论仅覆盖已测试的 HAT 与厂商内核组合；其他镜像及内核版本未经过本轮芒果派回归验证，可能需要进一步适配。WM8960 的 `aplay` 进程耗时包含 PLL 锁定/启动开销，回归工具会单独测量录音中测试音的实际时长。`codec-loopback` 仅适用于 ES8389；WM8960 请使用 `soc-loopback` 和 `microphone`。
 
 > ⚠️ **重要硬件警告（Orange Pi Zero 3W 和 Radxa Cubie A7Z）**
 > Orange Pi Zero 3W 和 Radxa Cubie A7Z **必须搭配 Whisplay V2 硬件使用**。
@@ -172,7 +184,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
 
   * **功能**: 内置统一声卡驱动源码、安装脚本、ALSA 配置和平台 DTS overlay。
   * **说明**: 各平台安装脚本都会直接从本工程构建并安装该驱动，不需要用户本地另有 `whisplay-soundcard` 仓库。
-  * **MangoPi MQ Quad / Linux 5.16**：MQ overlay 会启用厂商 DMA 宽度与分频修正，并在 I2S 时钟稳定后初始化 ES8389；保留 HAT 板载 MCLK 振荡器。游戏重采样需要安装器提供的 `libasound2-plugins`。在板上运行 `sudo python3 audio/whisplay-soundcard/scripts/test-mangopi-audio.py microphone` 可保存并分析真实扬声器到麦克风的录音；`soc-loopback`、`codec-loopback` 验证数字链路，`--format S24_LE` / `--format S32_LE` 验证更宽的 PCM 容器。测试会短暂停止并恢复 daemon，同时恢复数字回环位。
+  * **MangoPi MQ Quad / Linux 5.16**：MQ overlay 会启用厂商 DMA 宽度与分频修正，以及每次流配置时的 APBIF 复位/FIFO 初始化，避免 app 切换后左右声道错位。ES8389 在 I2S 时钟稳定后初始化，保留 HAT 板载 MCLK 振荡器。这些厂商兼容处理仅作用于芒果派，不改变其他平台的时钟行为。在板上运行 `sudo python3 audio/whisplay-soundcard/scripts/test-mangopi-audio.py microphone` 可保存并分析真实扬声器到麦克风的录音；`soc-loopback`、`codec-loopback` 验证数字链路，`--format S24_LE` / `--format S32_LE` 验证更宽的 PCM 容器。测试会短暂停止并恢复 daemon，等待 daemon 就绪，同时恢复数字回环位；daemon 重启期间屏幕可能短暂黑屏。
 
 #### 4. 设备树 Overlay
 

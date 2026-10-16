@@ -63,10 +63,25 @@ def analyze(path, mode, pcm_format):
             real = sum(x*math.cos(2*math.pi*hz*i/rate) for i,x in enumerate(data))
             imag = sum(x*math.sin(2*math.pi*hz*i/rate) for i,x in enumerate(data))
             return 2*math.hypot(real, imag)/len(data)
+        # Measure signal duration in the capture, independently of codec PLL
+        # startup and ALSA drain time included in the aplay wall-clock time.
+        window = rate // 50
+        real_basis = [math.cos(2*math.pi*frequency*i/rate) for i in range(window)]
+        imag_basis = [math.sin(2*math.pi*frequency*i/rate) for i in range(window)]
+        envelope = []
+        signal = [x >> shift for x in samples[channel::2]]
+        for offset in range(0, len(signal)-window+1, window):
+            block = signal[offset:offset+window]
+            real = sum(x*b for x, b in zip(block, real_basis))
+            imag = sum(x*b for x, b in zip(block, imag_basis))
+            envelope.append(2*math.hypot(real, imag)/window)
+        threshold = max(20, max(envelope)*.2)
+        tone_seconds = sum(value > threshold for value in envelope)/50
         channels.append({'rms': round(rms, 2), 'peak': max(map(abs, data)),
                          'distinct': len(set(data)),
                          'expected_tone_hz': frequency,
                          'tone_amplitude': round(amplitude(frequency), 2),
+                         'tone_seconds': tone_seconds,
                          'other_tone_amplitude': round(amplitude(1499 if frequency == 997 else 997), 2)})
     return channels
 
@@ -76,22 +91,28 @@ def main():
     parser.add_argument('mode', choices=('soc-loopback', 'codec-loopback', 'microphone'))
     parser.add_argument('--device', default='hw:whisplaysound')
     parser.add_argument('--format', choices=('S16_LE', 'S24_LE', 'S32_LE'), default='S16_LE')
-    parser.add_argument('--codec-address', choices=('0x10', '0x12'),
-                        help='default: detect the bound ES8389 address')
+    parser.add_argument('--codec-address', choices=('0x10', '0x12', '0x1a'),
+                        help='default: detect the bound ES8389 or WM8960 address')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     if os.geteuid() != 0:
         parser.error('run as root on the MQ Quad')
     if not Path('/sys/bus/platform/devices/5097000.whisplay-ahub0').exists():
         parser.error('MQ Quad vendor AHUB device is absent')
-    if args.codec_address is None:
-        for address in ('0x10', '0x12'):
-            driver = Path('/sys/bus/i2c/devices/0-00' + address[2:] + '/driver')
-            if driver.exists() and driver.resolve().name == 'whisplay':
-                args.codec_address = address
-                break
-        else:
-            parser.error('no bound ES8389 at 0x10 or 0x12')
+    codec = None
+    for address, driver_name in (('0x10', 'whisplay'), ('0x12', 'whisplay'),
+                                 ('0x1a', 'wm8960')):
+        if args.codec_address is not None and args.codec_address != address:
+            continue
+        driver = Path('/sys/bus/i2c/devices/0-00' + address[2:] + '/driver')
+        if driver.exists() and driver.resolve().name == driver_name:
+            args.codec_address = address
+            codec = 'WM8960' if driver_name == 'wm8960' else 'ES8389'
+            break
+    if codec is None:
+        parser.error('no matching bound ES8389 or WM8960 codec')
+    if args.mode == 'codec-loopback' and codec != 'ES8389':
+        parser.error('codec-loopback uses the ES8389 ADC mixer; use soc-loopback for WM8960')
     output = args.output or Path(tempfile.mkdtemp(prefix='mq-audio-'))
     output.mkdir(parents=True, exist_ok=True)
     tone = output / ('tone-' + args.format + '.raw')
@@ -110,7 +131,11 @@ def main():
     old_loop = old_codec = None
     try:
         if args.mode == 'microphone':
-            adc_mix = int(command('i2cget', '-f', '-y', '0', args.codec_address, '0x31', 'b'), 16)
+            # WM8960 has write-only registers and a different I2C protocol.
+            # Never send ES8389 byte-register transactions to the V1 HAT.
+            adc_mix = 0
+            if codec == 'ES8389':
+                adc_mix = int(command('i2cget', '-f', '-y', '0', args.codec_address, '0x31', 'b'), 16)
             if register(0x5097200) & (1 << 20) or adc_mix & 0xc0:
                 raise RuntimeError('disable existing digital loopbacks before acoustic testing')
         if args.mode == 'codec-loopback':
@@ -142,8 +167,11 @@ def main():
         # Only the SoC loopback is isolated enough to measure crosstalk.
         if args.mode == 'soc-loopback':
             passed &= all(ch['other_tone_amplitude'] < 20 for ch in channels)
-        passed &= 2.8 < elapsed < 3.4
-        report = {'mode': args.mode, 'format': args.format, 'play_seconds': elapsed, 'channels': channels,
+        # WM8960's driver waits 250 ms for PLL lock on clock setup. Keep
+        # that overhead separate from the measured three-second waveform.
+        passed &= 2.8 < elapsed < (3.8 if codec == 'WM8960' else 3.4)
+        passed &= all(2.8 < ch['tone_seconds'] < 3.3 for ch in channels)
+        report = {'codec': codec, 'mode': args.mode, 'format': args.format, 'play_seconds': elapsed, 'channels': channels,
                   'passed': passed, 'capture': str(capture)}
         (output / (args.mode + '-' + args.format + '.json')).write_text(json.dumps(report, indent=2)+'\n')
         print(json.dumps(report))
