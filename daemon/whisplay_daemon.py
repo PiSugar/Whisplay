@@ -26,6 +26,7 @@ from daemon_shared import (
     BUTTON_LONG_PRESS_SEC,
     DEFAULT_APP_LOG_PATH,
     DEFAULT_DAEMON_HOME,
+    DEFAULT_MODEL,
     DEFAULT_PISUGAR_HOME_BUTTON,
     EXIT_GESTURE_LONG_PRESS,
     EXIT_GESTURE_QUAD_CLICK,
@@ -41,6 +42,7 @@ from daemon_shared import (
     STATUS_POLL_INTERVAL_SEC,
     VALID_EXIT_GESTURES,
     VALID_PISUGAR_HOME_BUTTONS,
+    WHISPLAY_JOY_MODEL,
     parse_args,
     resolve_runtime_config,
 )
@@ -56,6 +58,7 @@ class WhisplayDaemon:
         apps_dir: str,
         settings_path: str,
         pisugar_home_button: str = DEFAULT_PISUGAR_HOME_BUTTON,
+        model: str = DEFAULT_MODEL,
     ):
         self.socket_path = socket_path
         self.socket_dir = os.path.dirname(socket_path) or "."
@@ -65,8 +68,10 @@ class WhisplayDaemon:
         self.running = True
         self.state_lock = threading.RLock()
         self.event_broadcaster = EventBroadcaster()
-        self.board = WhisplayBoard()
-        self.desktop = DesktopRenderer(self.board, SCRIPT_DIR)
+        self.model = str(model).strip().lower()
+        self.joy_mode = self.model == WHISPLAY_JOY_MODEL
+        self.board = WhisplayBoard(enable_joystick=self.joy_mode)
+        self.desktop = DesktopRenderer(self.board, SCRIPT_DIR, joy_mode=self.joy_mode)
         self.pisugar = PiSugarManager()
         self.status_poller = StatusPoller(self.pisugar)
         self.internal_apps = InternalAppManager(self._lock_screen)
@@ -92,6 +97,9 @@ class WhisplayDaemon:
         self._register_internal_apps()
         self.board.on_button_press(self._on_button_pressed)
         self.board.on_button_release(self._on_button_released)
+        if self.joy_mode:
+            self.board.on_joystick_press(self._on_joystick_pressed)
+            self.board.on_joystick_release(self._on_joystick_released)
 
     def _move_desktop_selection(self, delta: int):
         apps = self._app_list()
@@ -144,6 +152,33 @@ class WhisplayDaemon:
                 selected = self._current_selected_app()
                 if selected is not None:
                     self._launch_app(selected)
+
+    def _on_joystick_pressed(self, direction: str):
+        with self.state_lock:
+            if self._screen_locked:
+                return
+            if self.foreground_app_id and not self.internal_apps.is_internal_app(self.foreground_app_id):
+                return
+            if direction == "left":
+                if self.foreground_app_id:
+                    app = self.apps.get(self.foreground_app_id)
+                    if app is not None:
+                        self._release_focus(app, "joy_left_back")
+                return
+        action = {
+            "up": "up",
+            "down": "down",
+            "right": "submit",
+            "center": "submit",
+        }.get(direction)
+        if action is None:
+            return
+        self._handle_keyboard_action(action)
+
+    def _on_joystick_released(self, direction: str):
+        # Navigation is edge-triggered on press. Releases are intentionally
+        # ignored, and all Joy input is paused while an external app owns focus.
+        return
 
     def _normalize_priority(self, value) -> int:
         try:
@@ -573,10 +608,13 @@ class WhisplayDaemon:
                 else:
                     self._recent_release_times = []
                 if is_internal_app:
-                    self.internal_apps.handle_button_release(
-                        self.foreground_app_id,
-                        press_duration >= BUTTON_LONG_PRESS_SEC,
-                    )
+                    if self.joy_mode:
+                        self.internal_apps.handle_keyboard_action(self.foreground_app_id, "submit")
+                    else:
+                        self.internal_apps.handle_button_release(
+                            self.foreground_app_id,
+                            press_duration >= BUTTON_LONG_PRESS_SEC,
+                        )
                     self.pisugar.poll_home_trigger()
                     if self.internal_apps.exit_requested:
                         self.internal_apps.clear_exit_requested()
@@ -589,6 +627,11 @@ class WhisplayDaemon:
             apps = self._app_list()
             if not apps:
                 self._render_desktop()
+                return
+            if self.joy_mode:
+                selected = self._current_selected_app()
+                if selected is not None:
+                    self._launch_app(selected)
                 return
             if press_duration >= BUTTON_LONG_PRESS_SEC:
                 selected = self._current_selected_app()
@@ -670,7 +713,18 @@ class WhisplayDaemon:
                     self.pending_launch_app_id = None
                     self.pending_launch_started_at = 0.0
                     self._render_desktop()
-                if self._button_press_started_at > 0 and time.time() - self._button_press_started_at >= BUTTON_LONG_PRESS_SEC:
+                legacy_long_press_active = (
+                    not self.joy_mode
+                    or (
+                        self.foreground_app_id
+                        and not self.internal_apps.is_internal_app(self.foreground_app_id)
+                    )
+                )
+                if (
+                    legacy_long_press_active
+                    and self._button_press_started_at > 0
+                    and time.time() - self._button_press_started_at >= BUTTON_LONG_PRESS_SEC
+                ):
                     if self.board.button_pressed():
                         if self.foreground_app_id:
                             app = self.apps.get(self.foreground_app_id)
@@ -991,6 +1045,8 @@ if __name__ == "__main__":
         runtime_config["socket_path"],
         runtime_config["apps_dir"],
         runtime_config["settings_path"],
+        runtime_config["pisugar_home_button"],
+        runtime_config["model"],
     )
     signal.signal(signal.SIGTERM, cleanup_and_exit)
     signal.signal(signal.SIGINT, cleanup_and_exit)

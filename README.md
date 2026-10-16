@@ -97,9 +97,17 @@ Example daemon settings:
 ```json
 {
   "apps_dir": "~/.whisplay-daemon/app",
+  "model": "whisplay",
   "pisugar_home_button": "single"
 }
 ```
+
+Set `model` to `whisplay-joy` for the Whisplay Joy board. Its five-way switch
+uses S1/up (physical pin 32, BCM12), S2/right (pin 33, BCM13), S4/down
+(pin 31, BCM6), S3/left (pin 29, BCM5), and CENTER (pin 37, BCM26). Up/down
+scroll daemon menus, right or CENTER confirms, and left returns. The original Whisplay
+button also confirms with a normal click. Joy input is ignored while an external
+app owns the foreground and resumes when the daemon regains focus.
 
 `pisugar_home_button` controls which PiSugar button gesture returns from the foreground app back to daemon home. Supported values are `single`, `double`, `long`, and `none`. The default is `single`. When PiSugar 3 is detected on I2C bus 1 at `0x57`, the daemon reads the power-button state directly from register `0x02` and uses a power-button single click to return home, leaving the PiSugar custom-button single-click event free. Setting this option to `none` still disables the integration.
 

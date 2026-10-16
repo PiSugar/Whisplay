@@ -32,6 +32,9 @@ DEFAULT_APP_LOG_PATH = os.path.join(DEFAULT_DAEMON_HOME, "daemon-app.log")
 STATUS_POLL_INTERVAL_SEC = 5.0
 DEFAULT_PISUGAR_HOME_BUTTON = "single"
 VALID_PISUGAR_HOME_BUTTONS = {"single", "double", "long", "none"}
+DEFAULT_MODEL = "whisplay"
+WHISPLAY_JOY_MODEL = "whisplay-joy"
+VALID_MODELS = {DEFAULT_MODEL, WHISPLAY_JOY_MODEL}
 
 
 def load_json_file(path: str) -> dict:
@@ -86,6 +89,12 @@ def resolve_runtime_config(args):
     if stored_settings.get("pisugar_home_button") != pisugar_home_button:
         stored_settings["pisugar_home_button"] = pisugar_home_button
         changed = True
+    model = str(stored_settings.get("model", DEFAULT_MODEL)).strip().lower()
+    if model not in VALID_MODELS:
+        model = DEFAULT_MODEL
+    if stored_settings.get("model") != model:
+        stored_settings["model"] = model
+        changed = True
     if not os.path.exists(settings_path) or changed:
         write_json_file(settings_path, stored_settings)
     return {
@@ -93,6 +102,7 @@ def resolve_runtime_config(args):
         "socket_path": DEFAULT_SOCKET_PATH,
         "apps_dir": apps_dir,
         "pisugar_home_button": pisugar_home_button,
+        "model": model,
     }
 
 

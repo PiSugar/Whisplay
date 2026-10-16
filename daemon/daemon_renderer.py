@@ -61,15 +61,17 @@ def _draw_rounded_rectangle(
 
 
 class DesktopRenderer:
-    def __init__(self, board, script_dir: str):
+    def __init__(self, board, script_dir: str, joy_mode: bool = False):
         self.board = board
         self.script_dir = script_dir
+        self.joy_mode = joy_mode
         self.title_font = self._load_font(TITLE_FONT_SIZE)
         self.body_font = self._load_font(16)
         self.small_font = self._load_font(14)
         self.battery_font = self._load_font(13)
         self.icon_dir = os.path.join(script_dir, "img")
         self._icon_cache: dict[tuple[str, int], Image.Image | None] = {}
+        self._joy_arrow_cache: dict[tuple[str, tuple[int, ...]], Image.Image] = {}
         self.zoom_sizes = {
             -2: self._load_font(12),
             -1: self._load_font(14),
@@ -211,6 +213,109 @@ class DesktopRenderer:
         _draw_rounded_rectangle(draw, bounds, radius=height // 2, fill=fill)
         return width
 
+    def _joy_arrow_icon(self, direction: str, color) -> Image.Image:
+        """Render a thin, pixel-centered arrow with antialiased round ends."""
+        rgba = tuple(color) if len(color) == 4 else (*color, 255)
+        cache_key = (direction, rgba)
+        cached = self._joy_arrow_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        # Derive the left arrow from the final right arrow so their geometry is
+        # an exact mirror, including antialiasing at the rounded endpoints.
+        if direction == "left":
+            icon = self._joy_arrow_icon("right", rgba).transpose(
+                Image.Transpose.FLIP_LEFT_RIGHT
+            )
+            self._joy_arrow_cache[cache_key] = icon
+            return icon
+
+        scale = 4
+        icon_size = 16
+        stroke_width = 6  # 1.5 px after downsampling.
+        mask = Image.new("L", (icon_size * scale, icon_size * scale), 0)
+        icon_draw = ImageDraw.Draw(mask)
+
+        # Map logical pixel centers into the supersampled image.  In particular,
+        # 7.5 maps to 31.5, the exact center of the even-sized 64 px canvas.
+        def point(px: float, py: float) -> tuple[float, float]:
+            return (px * scale + 1.5, py * scale + 1.5)
+
+        def segment(start, end):
+            start = point(*start)
+            end = point(*end)
+            icon_draw.line((start, end), fill=255, width=stroke_width)
+            radius = stroke_width / 2
+            for center_x, center_y in (start, end):
+                icon_draw.ellipse(
+                    (
+                        center_x - radius,
+                        center_y - radius,
+                        center_x + radius,
+                        center_y + radius,
+                    ),
+                    fill=255,
+                )
+
+        if direction == "vertical":
+            segment((7.5, 1.5), (7.5, 13.5))
+            segment((7.5, 1.5), (3.5, 5.5))
+            segment((7.5, 1.5), (11.5, 5.5))
+            segment((7.5, 13.5), (3.5, 9.5))
+            segment((7.5, 13.5), (11.5, 9.5))
+        else:
+            is_right = direction == "right"
+            tip_x = 13.5 if is_right else 1.5
+            tail_x = 1.5 if is_right else 13.5
+            shoulder_x = 9.5 if is_right else 5.5
+            segment((tail_x, 7.5), (tip_x, 7.5))
+            segment((tip_x, 7.5), (shoulder_x, 3.5))
+            segment((tip_x, 7.5), (shoulder_x, 11.5))
+
+        mask = mask.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
+
+        # Pillow rasterizes even-width lines with a small directional bias.
+        # Unioning each mask with its mirror makes the visible axes land on the
+        # mathematical center of the even-sized icon.
+        def symmetric_union(source: Image.Image, transpose) -> Image.Image:
+            mirrored = source.transpose(transpose)
+            return Image.frombytes(
+                "L",
+                source.size,
+                bytes(max(a, b) for a, b in zip(source.tobytes(), mirrored.tobytes())),
+            )
+
+        mask = symmetric_union(mask, Image.Transpose.FLIP_TOP_BOTTOM)
+        if direction == "vertical":
+            mask = symmetric_union(mask, Image.Transpose.FLIP_LEFT_RIGHT)
+
+        if rgba[3] != 255:
+            mask = mask.point(lambda value: value * rgba[3] // 255)
+        icon = Image.new("RGBA", (icon_size, icon_size), rgba[:3] + (0,))
+        icon.putalpha(mask)
+        self._joy_arrow_cache[cache_key] = icon
+        return icon
+
+    def _draw_joy_arrow(self, draw, x: int, y: int, direction: str, color) -> int:
+        """Draw one consistently weighted, round-ended Joy navigation icon."""
+        icon = self._joy_arrow_icon(direction, color)
+        draw._image.paste(icon, (x, y), icon)
+        return 15
+
+    def _draw_joy_legend(self, draw, x: int, y: int, color):
+        cursor_x = x
+        label_gap = 3
+        group_gap = 9
+        for direction, label in (
+            ("vertical", "scroll"),
+            ("right", "select"),
+            ("left", "back"),
+        ):
+            cursor_x += self._draw_joy_arrow(draw, cursor_x, y + 1, direction, color)
+            cursor_x += label_gap
+            draw.text((cursor_x, y), label, fill=color, font=self.small_font)
+            cursor_x += self.small_font.getbbox(label)[2] + group_gap
+
     def _draw_desktop_legend(self, draw: ImageDraw.ImageDraw, x: int, y: int):
         legend_color = (60, 90, 100)
         label_gap = 4
@@ -220,6 +325,9 @@ class DesktopRenderer:
         pill_h = 8
 
         cursor_x = x
+        if self.joy_mode:
+            self._draw_joy_legend(draw, cursor_x, y, legend_color)
+            return
         cursor_x += self._draw_legend_pill(draw, cursor_x, y + 4, dot_size, dot_size, legend_color)
         cursor_x += label_gap
         draw.text((cursor_x, y), "next", fill=legend_color, font=self.small_font)
@@ -329,6 +437,9 @@ class DesktopRenderer:
         pill_h = 8
 
         cursor_x = x
+        if self.joy_mode:
+            self._draw_joy_legend(draw, cursor_x, y, legend_color)
+            return
         cursor_x += self._draw_legend_pill(draw, cursor_x, y + 4, dot_size, dot_size, legend_color)
         cursor_x += label_gap
         draw.text((cursor_x, y), "next", fill=legend_color, font=self.small_font)
@@ -347,6 +458,10 @@ class DesktopRenderer:
         items = list(view_model.get("items") or [])
         selected_index = int(view_model.get("selected_index") or 0)
         status = str(view_model.get("status") or "")
+        if self.joy_mode:
+            status = status.replace("Long press", "Press button").replace(
+                "long press", "press button"
+            )
         busy = bool(view_model.get("busy"))
         detail_lines = list(view_model.get("detail_lines") or [])
 
@@ -371,6 +486,10 @@ class DesktopRenderer:
                 item = items[idx]
                 item_title = str(item.get("title") or "")
                 item_meta = str(item.get("meta") or "")
+                if self.joy_mode:
+                    item_meta = item_meta.replace("Long press", "Press button").replace(
+                        "long press", "press button"
+                    )
                 if idx == selected_index:
                     color = (255, 255, 255)
                     meta_color = (130, 224, 170)

@@ -96,9 +96,16 @@ daemon 设置示例：
 ```json
 {
   "apps_dir": "~/.whisplay-daemon/app",
+  "model": "whisplay",
   "pisugar_home_button": "single"
 }
 ```
+
+Whisplay Joy 请把 `model` 设为 `whisplay-joy`。五轴按键映射为：S1/上
+（物理 pin 32，BCM12）、S2/右（pin 33，BCM13）、S4/下（pin 31，BCM6）、
+S3/左（pin 29，BCM5）、CENTER（pin 37，BCM26）。daemon 中上/下用于菜单
+滚动，右键或 CENTER 确认，左键返回；原 Whisplay 按钮也可单击确认。外部 app
+获得前台后 daemon 会忽略五轴输入，返回 daemon 后自动恢复。
 
 `pisugar_home_button` 用于控制 PiSugar 的哪个按键事件会触发“从前台 app 返回 daemon 首页”。支持 `single`、`double`、`long`、`none`，默认值为 `single`。检测到 PiSugar3（I²C bus 1、地址 `0x57`）时，daemon 会直接读取 `0x02` 寄存器的电源键状态，以电源键单击返回首页，不再占用 PiSugar 自定义按钮的单击事件；设为 `none` 仍可关闭此功能。
 

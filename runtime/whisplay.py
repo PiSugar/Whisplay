@@ -263,12 +263,13 @@ def _request_output(chip, line_offset, consumer='whisplay'):
         return _LineHandle(v1_line=line)
 
 
-def _request_input(chip, line_offset, consumer='whisplay-btn'):
-    """Request a single GPIO line as input with bias disabled."""
+def _request_input(chip, line_offset, consumer='whisplay-btn', pull_up=False):
+    """Request a GPIO input, optionally enabling its internal pull-up."""
     if _GPIOD_V2:
         try:
             settings = gpiod.LineSettings(
-                direction=Direction.INPUT, bias=Bias.DISABLED
+                direction=Direction.INPUT,
+                bias=Bias.PULL_UP if pull_up else Bias.DISABLED,
             )
         except Exception:
             settings = gpiod.LineSettings(direction=Direction.INPUT)
@@ -280,7 +281,10 @@ def _request_input(chip, line_offset, consumer='whisplay-btn'):
             line.request(
                 consumer=consumer,
                 type=gpiod.LINE_REQ_DIR_IN,
-                flags=gpiod.LINE_REQ_FLAG_BIAS_DISABLE
+                flags=(
+                    gpiod.LINE_REQ_FLAG_BIAS_PULL_UP
+                    if pull_up else gpiod.LINE_REQ_FLAG_BIAS_DISABLE
+                ),
             )
         except Exception:
             line.request(consumer=consumer, type=gpiod.LINE_REQ_DIR_IN)
@@ -355,15 +359,26 @@ class WhisplayBoard:
 
     # Button pin
     BUTTON_PIN = 11
+    JOYSTICK_PINS = {
+        "up": 32,      # S1 / BCM12
+        "right": 33,   # S2 / BCM13
+        "down": 31,    # S4 / BCM6
+        "left": 29,    # S3 / BCM5
+        "center": 37,  # CENTER / BCM26
+    }
+    JOYSTICK_DEBOUNCE_SEC = 0.02
 
-    def __init__(self):
+    def __init__(self, enable_joystick=False):
         self.platform = PLATFORM
+        self.enable_joystick = bool(enable_joystick)
         self.backlight_pwm = None
         self._current_r = 0
         self._current_g = 0
         self._current_b = 0
         self.button_press_callback = None
         self.button_release_callback = None
+        self.joystick_press_callback = None
+        self.joystick_release_callback = None
 
         # Select pin map and SPI config based on platform
         if self.platform == "rpi":
@@ -426,6 +441,8 @@ class WhisplayBoard:
         pins_used = [self.DC_PIN, self.RST_PIN, self.LED_PIN,
                      self.RED_PIN, self.GREEN_PIN, self.BLUE_PIN,
                      self.BUTTON_PIN]
+        if self.enable_joystick:
+            pins_used.extend(self.JOYSTICK_PINS.values())
 
         for pin in pins_used:
             if pin not in self._pin_map:
@@ -463,10 +480,24 @@ class WhisplayBoard:
         chip = self._gpio_chips[chip_num]
         self._gpio_lines[self.BUTTON_PIN] = _request_input(chip, line_offset)
 
+        # The Joy switches short their GPIO line to GND, so these inputs are
+        # active-low and require an internal pull-up.
+        if self.enable_joystick:
+            for pin in self.JOYSTICK_PINS.values():
+                chip_num, line_offset = self._pin_map[pin]
+                chip = self._gpio_chips[chip_num]
+                self._gpio_lines[pin] = _request_input(
+                    chip, line_offset, consumer='whisplay-joy', pull_up=True
+                )
+
         # Start button event listener thread (polling)
         self._btn_thread_running = True
         self._btn_thread = threading.Thread(target=self._button_monitor, daemon=True)
         self._btn_thread.start()
+        self._joy_thread = None
+        if self.enable_joystick:
+            self._joy_thread = threading.Thread(target=self._joystick_monitor, daemon=True)
+            self._joy_thread.start()
 
     def _init_spi(self):
         """Initialize SPI bus."""
@@ -498,6 +529,38 @@ class WhisplayBoard:
                 if self._btn_thread_running:
                     pass
             time.sleep(poll_interval)
+
+    def _joystick_monitor(self):
+        """Poll and debounce the active-low five-way Joy switches."""
+        lines = {
+            direction: self._gpio_lines[pin]
+            for direction, pin in self.JOYSTICK_PINS.items()
+        }
+        stable = {direction: line.get_value() for direction, line in lines.items()}
+        pending = dict(stable)
+        changed_at = {direction: time.monotonic() for direction in lines}
+        while self._btn_thread_running:
+            now = time.monotonic()
+            for direction, line in lines.items():
+                try:
+                    state = line.get_value()
+                    if state != pending[direction]:
+                        pending[direction] = state
+                        changed_at[direction] = now
+                    elif state != stable[direction] and (
+                        now - changed_at[direction] >= self.JOYSTICK_DEBOUNCE_SEC
+                    ):
+                        stable[direction] = state
+                        callback = (
+                            self.joystick_press_callback
+                            if state == 0 else self.joystick_release_callback
+                        )
+                        if callback:
+                            callback(direction)
+                except Exception:
+                    if not self._btn_thread_running:
+                        return
+            time.sleep(self.BUTTON_POLL_INTERVAL_SEC)
 
     # ==================== GPIO Helpers ====================
     def _gpio_output(self, pin, value):
@@ -764,6 +827,12 @@ class WhisplayBoard:
     def on_button_release(self, callback):
         self.button_release_callback = callback
 
+    def on_joystick_press(self, callback):
+        self.joystick_press_callback = callback
+
+    def on_joystick_release(self, callback):
+        self.joystick_release_callback = callback
+
     # ========== Cleanup ==========
     def cleanup(self):
         # Stop backlight PWM
@@ -780,6 +849,8 @@ class WhisplayBoard:
         self._btn_thread_running = False
         if hasattr(self, '_btn_thread') and self._btn_thread:
             self._btn_thread.join(timeout=2)
+        if self._joy_thread:
+            self._joy_thread.join(timeout=2)
         # Release GPIO resources
         for line in self._gpio_lines.values():
             try:
