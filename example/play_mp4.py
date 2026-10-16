@@ -5,6 +5,7 @@ import gc
 import shutil
 import argparse
 import urllib.request
+import threading
 from PIL import Image, ImageDraw, ImageFont
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -55,6 +56,18 @@ def start_audio_process(video_path):
         stderr=subprocess.DEVNULL,
     )
 
+def stop_process(process):
+    """Stop and reap one owned player/decoder, including its output pipe."""
+    if process is None:
+        return
+    try:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=1)
+    finally:
+        if process.stdout is not None:
+            process.stdout.close()
+
 def play_video(video_path, video_url=None):
     board = create_whisplay_hardware(
         app_id=os.getenv("WHISPLAY_APP_ID", "whisplay-play-mp4"),
@@ -76,13 +89,24 @@ def play_video(video_path, video_url=None):
 
     running = [True]
     proc_ref = [None]
+    audio_ref = [None]
+    process_lock = threading.Lock()
 
     def on_focus_revoked(_payload=None):
-        running[0] = False
-        if proc_ref[0] is not None and proc_ref[0].poll() is None:
-            proc_ref[0].kill()
+        # Serialize with startup/restart so exit cannot leave a late-created
+        # ffplay or ffmpeg running after the app has returned to the desktop.
+        with process_lock:
+            running[0] = False
+            for child in (proc_ref[0], audio_ref[0]):
+                if child is not None and child.poll() is None:
+                    try:
+                        child.kill()
+                    except ProcessLookupError:
+                        pass
 
     board.on_focus_revoked(on_focus_revoked)
+    if hasattr(board, 'on_exit_request'):
+        board.on_exit_request(on_focus_revoked)
 
     frame_size = width * height * 2
     buffer = bytearray(frame_size)
@@ -91,45 +115,40 @@ def play_video(video_path, video_url=None):
         cmd = get_ffmpeg_cmd(video_path, width, height)
         return subprocess.Popen(cmd, stdout=subprocess.PIPE, bufsize=frame_size)
 
-    process = start_process()
-    proc_ref[0] = process
-    audio = start_audio_process(video_path)
-
-    gc.collect()
-    gc.disable()
-
-    print(f"Playing (loop): {video_path}. Press Ctrl+C to exit.")
     try:
+        with process_lock:
+            if not running[0]:
+                return
+            process = start_process()
+            proc_ref[0] = process
+            audio_ref[0] = start_audio_process(video_path)
+
+        gc.collect()
+        gc.disable()
+        print(f"Playing (loop): {video_path}. Press Ctrl+C to exit.")
         while running[0]:
             read = process.stdout.readinto(buffer)
             if not running[0]:
                 break
             if read != frame_size:
-                try:
-                    process.kill()
-                except Exception:
-                    pass
-                try:
-                    process.wait(timeout=1)
-                except Exception:
-                    pass
-                process = start_process()
-                proc_ref[0] = process
+                stop_process(process)
+                with process_lock:
+                    if not running[0]:
+                        break
+                    process = start_process()
+                    proc_ref[0] = process
                 continue
             board.draw_image(0, 0, width, height, buffer)
     except KeyboardInterrupt:
         print("\nStopped.")
     finally:
-        try:
-            if proc_ref[0] is not None and proc_ref[0].poll() is None:
-                proc_ref[0].kill()
-        except Exception:
-            pass
-        try:
-            if proc_ref[0] is not None:
-                proc_ref[0].wait(timeout=1)
-        except Exception:
-            pass
+        with process_lock:
+            running[0] = False
+        for child in (proc_ref[0], audio_ref[0]):
+            try:
+                stop_process(child)
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                print(f"Failed to stop media process: {exc}")
         gc.enable()
         board.cleanup()
         print("Exit.")
