@@ -11,6 +11,7 @@ import json
 import math
 import os
 from pathlib import Path
+import socket
 import subprocess
 import tempfile
 import time
@@ -27,6 +28,22 @@ def register(address, value=None):
         args.append(hex(value))
     result = command(*args)
     return int(result, 16) if result else None
+
+
+def wait_for_daemon():
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        try:
+            with socket.socket(socket.AF_UNIX) as client:
+                client.settimeout(2)
+                client.connect('/tmp/whisplay-daemon.sock')
+                client.sendall(b'{"cmd":"health.ping"}\n')
+                if json.loads(client.makefile('rb').readline()).get('ok'):
+                    return
+        except (OSError, ValueError):
+            pass
+        time.sleep(.2)
+    raise RuntimeError('daemon restarted but did not become ready within 20 seconds')
 
 
 def analyze(path, mode, pcm_format):
@@ -59,13 +76,22 @@ def main():
     parser.add_argument('mode', choices=('soc-loopback', 'codec-loopback', 'microphone'))
     parser.add_argument('--device', default='hw:whisplaysound')
     parser.add_argument('--format', choices=('S16_LE', 'S24_LE', 'S32_LE'), default='S16_LE')
-    parser.add_argument('--codec-address', default='0x12', choices=('0x10', '0x12'))
+    parser.add_argument('--codec-address', choices=('0x10', '0x12'),
+                        help='default: detect the bound ES8389 address')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     if os.geteuid() != 0:
         parser.error('run as root on the MQ Quad')
     if not Path('/sys/bus/platform/devices/5097000.whisplay-ahub0').exists():
         parser.error('MQ Quad vendor AHUB device is absent')
+    if args.codec_address is None:
+        for address in ('0x10', '0x12'):
+            driver = Path('/sys/bus/i2c/devices/0-00' + address[2:] + '/driver')
+            if driver.exists() and driver.resolve().name == 'whisplay':
+                args.codec_address = address
+                break
+        else:
+            parser.error('no bound ES8389 at 0x10 or 0x12')
     output = args.output or Path(tempfile.mkdtemp(prefix='mq-audio-'))
     output.mkdir(parents=True, exist_ok=True)
     tone = output / ('tone-' + args.format + '.raw')
@@ -73,8 +99,9 @@ def main():
     shift = {'S16_LE': 0, 'S24_LE': 8, 'S32_LE': 16}[args.format]
     data = array.array('h' if args.format == 'S16_LE' else 'i')
     for i in range(48000*3):
+        right_frequency = 997 if args.mode == 'microphone' else 1499
         data.extend((int(3000*math.sin(2*math.pi*997*i/48000)) << shift,
-                     int(2000*math.sin(2*math.pi*1499*i/48000)) << shift))
+                     int(2000*math.sin(2*math.pi*right_frequency*i/48000)) << shift))
     tone.write_bytes(data.tobytes())
     active = subprocess.run(['systemctl', 'is-active', '--quiet', 'whisplay-daemon.service']).returncode == 0
     if active:
@@ -132,6 +159,7 @@ def main():
             command('i2cset', '-f', '-y', '0', args.codec_address, '0x31', hex(old_codec), 'b')
         if active:
             subprocess.run(['systemctl', 'start', 'whisplay-daemon.service'], check=True)
+            wait_for_daemon()
 
 
 if __name__ == '__main__':

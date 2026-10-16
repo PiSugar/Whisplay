@@ -1256,16 +1256,61 @@ static int whisplay_dai_startup(struct snd_pcm_substream *substream)
 	return 0;
 }
 
+static int whisplay_h616_prepare_apbif(struct snd_pcm_substream *substream)
+{
+	struct platform_device *pdev;
+	struct device_node *np;
+	struct regmap *regmap;
+	unsigned int fifo, irq, count;
+	int ret;
+
+	np = of_find_compatible_node(NULL, NULL, "allwinner,sunxi-ahub");
+	if (!np)
+		return -ENODEV;
+	pdev = of_find_device_by_node(np);
+	of_node_put(np);
+	if (!pdev)
+		return -EPROBE_DEFER;
+	regmap = dev_get_regmap(&pdev->dev, NULL);
+	if (!regmap) {
+		ret = -ENODEV;
+		goto out;
+	}
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		fifo = WHISPLAY_H616_APBIF0_TXFIFO_CTL;
+		irq = 0x18;
+		count = 0x34;
+	} else {
+		fifo = WHISPLAY_H616_APBIF0_RXFIFO_CTL;
+		irq = 0x108;
+		count = 0x124;
+	}
+	/* Mirror vendor prepare: stale RX half-frames otherwise swap L/R. */
+	ret = regmap_update_bits(regmap, fifo, WHISPLAY_H616_APBIF_FIFO_FLUSH,
+				 WHISPLAY_H616_APBIF_FIFO_FLUSH);
+	if (!ret)
+		ret = regmap_write(regmap, irq, 3);
+	if (!ret)
+		ret = regmap_write(regmap, count, 0);
+out:
+	put_device(&pdev->dev);
+	return ret;
+}
+
 static int whisplay_dai_prepare(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = whisplay_substream_to_rtd(substream);
 	int ret;
 
-	if (whisplay_active_chip == WHISPLAY_CHIP_ES8389 &&
-	    of_property_read_bool(rtd->card->dev->of_node,
-				  "whisplay,h616-vendor-dma"))
-		return es8389_prepare_clocked(snd_soc_rtd_to_codec(rtd, 0),
-					      substream);
+	if (of_property_read_bool(rtd->card->dev->of_node,
+				  "whisplay,h616-vendor-dma")) {
+		ret = whisplay_h616_prepare_apbif(substream);
+		if (ret)
+			return ret;
+		if (whisplay_active_chip == WHISPLAY_CHIP_ES8389)
+			return es8389_prepare_clocked(snd_soc_rtd_to_codec(rtd, 0),
+						      substream);
+	}
 
 	if (whisplay_active_chip != WHISPLAY_CHIP_WM8960 ||
 	    substream->stream != SNDRV_PCM_STREAM_CAPTURE)
@@ -1469,6 +1514,7 @@ static int whisplay_h616_configure_apbif(
 	struct regmap *regmap;
 	unsigned int word_size;
 	unsigned int channels;
+	unsigned int reset;
 	int ret = 0;
 
 	switch (params_format(params)) {
@@ -1498,6 +1544,19 @@ static int whisplay_h616_configure_apbif(
 	if (!regmap) {
 		ret = -ENODEV;
 		goto out_put_device;
+	}
+	if (of_property_read_bool(rtd->card->dev->of_node,
+				  "whisplay,h616-vendor-dma")) {
+		/* FIFO flush does not reset APBIF's interleaved channel phase. */
+		reset = substream->stream == SNDRV_PCM_STREAM_PLAYBACK ?
+			WHISPLAY_H616_APBIF_TX_RESET_GATE :
+			WHISPLAY_H616_APBIF_RX_RESET_GATE;
+		ret = regmap_update_bits(regmap, WHISPLAY_H616_AHUB_RST, reset, 0);
+		if (ret)
+			goto out_put_device;
+		ret = regmap_update_bits(regmap, WHISPLAY_H616_AHUB_RST, reset, reset);
+		if (ret)
+			goto out_put_device;
 	}
 
 	/*
