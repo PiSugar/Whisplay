@@ -172,6 +172,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
 
   * **功能**: 内置统一声卡驱动源码、安装脚本、ALSA 配置和平台 DTS overlay。
   * **说明**: 各平台安装脚本都会直接从本工程构建并安装该驱动，不需要用户本地另有 `whisplay-soundcard` 仓库。
+  * **MangoPi MQ Quad / Linux 5.16**：MQ overlay 会启用厂商 DMA 宽度与分频修正，并在 I2S 时钟稳定后初始化 ES8389；保留 HAT 板载 MCLK 振荡器。游戏重采样需要安装器提供的 `libasound2-plugins`。在板上运行 `sudo python3 audio/whisplay-soundcard/scripts/test-mangopi-audio.py microphone` 可保存并分析真实扬声器到麦克风的录音；`soc-loopback`、`codec-loopback` 验证数字链路，`--format S24_LE` / `--format S32_LE` 验证更宽的 PCM 容器。测试会短暂停止并恢复 daemon，同时恢复数字回环位。
 
 #### 4. 设备树 Overlay
 

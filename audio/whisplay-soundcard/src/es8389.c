@@ -33,6 +33,9 @@ struct es8389_priv {
 	u8 vddd;
 	int version;
 	bool have_supplies;
+	bool clocked_init_done;
+	unsigned int dai_fmt;
+	struct snd_pcm_hw_params pcm_params;
 };
 
 static const char * const es8389_core_supplies[] = {
@@ -380,6 +383,8 @@ static int es8389_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	struct es8389_priv *es8389 = snd_soc_component_get_drvdata(component);
 	u8 state = 0;
 
+	es8389->dai_fmt = fmt;
+
 	switch (fmt & SND_SOC_DAIFMT_CLOCK_PROVIDER_MASK) {
 	case SND_SOC_DAIFMT_CBC_CFP:
 		regmap_update_bits(es8389->regmap, ES8389_MASTER_MODE,
@@ -422,6 +427,8 @@ static int es8389_pcm_hw_params(struct snd_pcm_substream *substream,
 	int coeff, ret;
 	u8 dmic_enable, state = 0;
 	unsigned int regv;
+
+	es8389->pcm_params = *params;
 
 	switch (params_format(params)) {
 	case SNDRV_PCM_FORMAT_S16_LE:
@@ -539,6 +546,52 @@ static int es8389_mute(struct snd_soc_dai *dai, int mute, int direction)
 			regmap_update_bits(es8389->regmap, ES8389_ADC_FORMAT_MUTE, 0x03, 0x00);
 		}
 	}
+	return 0;
+}
+
+/* Called by the MQ Quad machine driver once BCLK/LRCK are running. */
+int es8389_prepare_clocked(struct snd_soc_dai *dai,
+			   struct snd_pcm_substream *substream)
+{
+	static const unsigned int gain_regs[] = {
+		ES8389_MIC1_GAIN, ES8389_MIC2_GAIN, ES8389_OSR_VOL,
+		ES8389_ADCL_VOL, ES8389_ADCR_VOL, ES8389_DACL_VOL,
+		ES8389_DACR_VOL,
+	};
+	struct es8389_priv *es8389 = snd_soc_component_get_drvdata(dai->component);
+	struct snd_pcm_hw_params params = es8389->pcm_params;
+	unsigned int gains[ARRAY_SIZE(gain_regs)];
+	unsigned int fmt = es8389->dai_fmt;
+	int i, ret;
+
+	if (es8389->clocked_init_done)
+		return 0;
+
+	for (i = 0; i < ARRAY_SIZE(gain_regs); i++) {
+		ret = regmap_read(es8389->regmap, gain_regs[i], &gains[i]);
+		if (ret)
+			return ret;
+	}
+	/* The analog CSM can latch a silent state if initialized without I2S. */
+	ret = es8389_chip_init(dai->component);
+	if (ret)
+		return ret;
+	ret = es8389_set_dai_fmt(dai, fmt);
+	if (ret)
+		return ret;
+	ret = es8389_pcm_hw_params(substream, &params, dai);
+	if (ret)
+		return ret;
+	for (i = 0; i < ARRAY_SIZE(gain_regs); i++) {
+		ret = regmap_write(es8389->regmap, gain_regs[i], gains[i]);
+		if (ret)
+			return ret;
+	}
+	ret = es8389_mute(dai, 0, substream->stream);
+	if (ret)
+		return ret;
+	es8389->clocked_init_done = true;
+	dev_info(dai->dev, "ES8389 initialized with active I2S clocks\n");
 	return 0;
 }
 
@@ -686,6 +739,7 @@ static int es8389_suspend(struct snd_soc_component *component)
 {
 	struct es8389_priv *es8389 = snd_soc_component_get_drvdata(component);
 
+	es8389->clocked_init_done = false;
 	es8389_set_bias_level(component, SND_SOC_BIAS_STANDBY);
 	regcache_cache_only(es8389->regmap, true);
 	regcache_mark_dirty(es8389->regmap);

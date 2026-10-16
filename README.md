@@ -176,6 +176,7 @@ The repo root is organized by responsibility:
 #### 3. Bundled Unified Sound Card Driver
 
   * `audio/whisplay-soundcard/` - unified driver source, install scripts, ALSA config, and platform DTS overlays. The platform installers build and install it directly from this repository.
+  * **MangoPi MQ Quad / Linux 5.16**: the MQ overlay enables a vendor-specific DMA-width/divider correction and initializes ES8389 after I2S clocks are active. The HAT's onboard MCLK oscillator is retained. `libasound2-plugins` is required for games using ALSA resampling. Run `sudo python3 audio/whisplay-soundcard/scripts/test-mangopi-audio.py microphone` on the board to save and analyze a real speaker-to-microphone recording. `soc-loopback` and `codec-loopback` test the digital paths; `--format S24_LE` / `--format S32_LE` exercise wider PCM containers. Tests temporarily stop and then restore the daemon; digital loopback bits are also restored.
 
 #### 4. Device Tree Overlays
 

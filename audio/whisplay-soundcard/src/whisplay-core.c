@@ -23,6 +23,7 @@
 #include <sound/soc.h>
 #include <sound/control.h>
 #include <sound/pcm_params.h>
+#include <sound/dmaengine_pcm.h>
 #include <uapi/sound/asound.h>
 
 #include "whisplay.h"
@@ -1257,7 +1258,14 @@ static int whisplay_dai_startup(struct snd_pcm_substream *substream)
 
 static int whisplay_dai_prepare(struct snd_pcm_substream *substream)
 {
+	struct snd_soc_pcm_runtime *rtd = whisplay_substream_to_rtd(substream);
 	int ret;
+
+	if (whisplay_active_chip == WHISPLAY_CHIP_ES8389 &&
+	    of_property_read_bool(rtd->card->dev->of_node,
+				  "whisplay,h616-vendor-dma"))
+		return es8389_prepare_clocked(snd_soc_rtd_to_codec(rtd, 0),
+					      substream);
 
 	if (whisplay_active_chip != WHISPLAY_CHIP_WM8960 ||
 	    substream->stream != SNDRV_PCM_STREAM_CAPTURE)
@@ -1455,6 +1463,7 @@ static int whisplay_h616_configure_apbif(
 					struct snd_pcm_substream *substream,
 					struct snd_pcm_hw_params *params)
 {
+	struct snd_soc_pcm_runtime *rtd = whisplay_substream_to_rtd(substream);
 	struct platform_device *ahub_pdev;
 	struct device_node *ahub_np;
 	struct regmap *regmap;
@@ -1546,6 +1555,12 @@ static int whisplay_h616_configure_apbif(
 				   WHISPLAY_H616_I2S_SLOT_COUNT_MASK,
 				   channels << 16);
 	}
+	if (of_property_read_bool(rtd->card->dev->of_node,
+				  "whisplay,h616-vendor-dma"))
+		/* Supply stable clocks before ES8389's analog startup. */
+		ret = regmap_update_bits(regmap, WHISPLAY_H616_I2S0_CTL,
+					 WHISPLAY_H616_I2S_GEN,
+					 WHISPLAY_H616_I2S_GEN);
 
 out_put_device:
 	put_device(&ahub_pdev->dev);
@@ -1559,6 +1574,7 @@ static int whisplay_dai_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
 	struct snd_soc_dai *ahub_dai;
+	struct snd_dmaengine_dai_dma_data *dma_data;
 	const char *mclk_fs_property;
 	unsigned int bclk_ratio;
 	unsigned int rate;
@@ -1576,9 +1592,10 @@ static int whisplay_dai_hw_params(struct snd_pcm_substream *substream,
 
 	/*
 	 * The H616/H618 vendor AHUB DAI needs the same explicit clock and TDM
-	 * sequence as its stock sunxi machine driver.  The Zero 2W header does
-	 * not route PI0/MCLK to the HAT, so keep MCLK disabled while driving
-	 * BCLK/LRCK from the vendor driver's 4 x 24.576 MHz PLL rate.
+	 * sequence as its stock sunxi machine driver.  The HAT supplies its own
+	 * codec MCLK, so the header only needs BCLK/LRCK.  MQ Quad's 5.16 DAI
+	 * halves the requested system clock; its divider must use that actual
+	 * module rate together with the corrected DMA sample width below.
 	 */
 	if (sunxi_h616) {
 		if (rate != WHISPLAY_H616_RATE)
@@ -1609,6 +1626,24 @@ static int whisplay_dai_hw_params(struct snd_pcm_substream *substream,
 			return ret;
 
 		bclk_ratio = WHISPLAY_H616_MODULE_RATE / rate;
+		if (of_property_read_bool(rtd->card->dev->of_node,
+					  "whisplay,h616-vendor-dma")) {
+			/*
+			 * The 5.16 sun50i vendor DAI fixes DMA accesses at 32 bits.
+			 * APBIF's S16 mode transfers one sample per FIFO access:
+			 * a 32-bit access drops alternate playback samples and stores
+			 * sign extension as alternate capture samples. Match the
+			 * FIFO access width to the PCM container width instead.
+			 */
+			dma_data = snd_soc_dai_get_dma_data(cpu_dai, substream);
+			if (!dma_data)
+				return -ENODEV;
+			dma_data->addr_width = params_format(params) ==
+				SNDRV_PCM_FORMAT_S16_LE ? DMA_SLAVE_BUSWIDTH_2_BYTES :
+				DMA_SLAVE_BUSWIDTH_4_BYTES;
+			/* set_sysclk() programs the module clock to freq / 2. */
+			bclk_ratio /= 2;
+		}
 		ret = snd_soc_dai_set_clkdiv(ahub_dai, 0, bclk_ratio);
 		if (ret)
 			return dev_err_probe(rtd->dev, ret,

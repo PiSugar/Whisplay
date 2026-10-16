@@ -27,6 +27,8 @@ extern struct snd_soc_component_driver es8389_component_driver;
 extern struct snd_soc_dai_driver es8389_dai;
 extern const struct regmap_config es8389_regmap_config;
 extern int es8389_chip_init(struct snd_soc_component *component);
+extern int es8389_prepare_clocked(struct snd_soc_dai *dai,
+				 struct snd_pcm_substream *substream);
 extern void es8389_apply_default_gains(struct snd_soc_component *component);
 
 extern enum whisplay_chip_type whisplay_active_chip;

@@ -149,6 +149,7 @@
 				whisplay,es8389-sysclk = <24576000>;
 				whisplay,wm8960-codec = <&codec_wm8960>;
 				whisplay,sunxi-h616-ahub;
+				whisplay,h616-vendor-dma;
 				whisplay,force-48k;
 				whisplay,no-continuous-clock;
 				status = "okay";
