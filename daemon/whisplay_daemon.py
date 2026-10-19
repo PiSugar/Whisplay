@@ -43,8 +43,10 @@ from daemon_shared import (
     VALID_EXIT_GESTURES,
     VALID_PISUGAR_HOME_BUTTONS,
     WHISPLAY_JOY_MODEL,
+    load_json_file,
     parse_args,
     resolve_runtime_config,
+    write_json_file,
 )
 from internal_apps import ExternalKeyboardReader, InternalAppManager
 from daemon_status import StatusPoller
@@ -59,6 +61,7 @@ class WhisplayDaemon:
         settings_path: str,
         pisugar_home_button: str = DEFAULT_PISUGAR_HOME_BUTTON,
         model: str = DEFAULT_MODEL,
+        autostart_app_id: str = "",
     ):
         self.socket_path = socket_path
         self.socket_dir = os.path.dirname(socket_path) or "."
@@ -77,6 +80,7 @@ class WhisplayDaemon:
         self.internal_apps = InternalAppManager(self._lock_screen)
         self.keyboard_reader = ExternalKeyboardReader()
         self.pisugar_home_button = self._normalize_pisugar_home_button(pisugar_home_button)
+        self.autostart_app_id = str(autostart_app_id or "").strip()
         self.apps: dict[str, AppRecord] = {}
         self.selected_app_index = 0
         self.foreground_app_id: str | None = None
@@ -299,6 +303,27 @@ class WhisplayDaemon:
             return None
         self.selected_app_index %= len(apps)
         return apps[self.selected_app_index]
+
+    def _autostart_configured_app(self):
+        if not self.autostart_app_id:
+            return
+        with self.state_lock:
+            app = self.apps.get(self.autostart_app_id)
+            if app is None:
+                print(
+                    f"[WhisplayDaemon] Autostart app not found: {self.autostart_app_id}"
+                )
+                return
+            apps = self._app_list()
+            self.selected_app_index = next(
+                (index for index, item in enumerate(apps) if item.app_id == app.app_id),
+                self.selected_app_index,
+            )
+            try:
+                print(f"[WhisplayDaemon] Autostarting app: {app.app_id}")
+                self._launch_app(app)
+            except Exception as exc:
+                print(f"[WhisplayDaemon] Failed to autostart {app.app_id}: {exc}")
 
     def _render_desktop(self):
         if self._screen_locked:
@@ -881,6 +906,7 @@ class WhisplayDaemon:
                 "running": app.is_running(),
                 "selected": selected is not None and selected.app_id == app.app_id,
                 "foreground": self.foreground_app_id == app.app_id,
+                "autostart": self.autostart_app_id == app.app_id,
             }
             for app in self._app_list()
         ]
@@ -916,6 +942,19 @@ class WhisplayDaemon:
 
             if cmd == "app.list":
                 return {"ok": True, "payload": {"apps": self._list_apps_payload()}}, False
+
+            if cmd == "app.autostart.set":
+                app_id = str(payload.get("app_id") or "").strip()
+                if app_id and app_id not in self.apps:
+                    raise RuntimeError(f"unknown app: {app_id}")
+                settings = load_json_file(self.settings_path)
+                settings["autostart_app_id"] = app_id
+                write_json_file(self.settings_path, settings)
+                self.autostart_app_id = app_id
+                return {
+                    "ok": True,
+                    "payload": {"autostart_app_id": self.autostart_app_id},
+                }, False
 
             if cmd == "app.launch":
                 app_id = str(payload.get("app_id", "")).strip()
@@ -1062,6 +1101,7 @@ class WhisplayDaemon:
         self.keyboard_reader.start(self._handle_keyboard_action)
         self._render_thread.start()
         self._monitor_thread.start()
+        self._autostart_configured_app()
         print(f"[WhisplayDaemon] Listening on {self.socket_path}")
         while self.running:
             try:
@@ -1115,6 +1155,7 @@ if __name__ == "__main__":
         runtime_config["settings_path"],
         runtime_config["pisugar_home_button"],
         runtime_config["model"],
+        runtime_config["autostart_app_id"],
     )
     signal.signal(signal.SIGTERM, cleanup_and_exit)
     signal.signal(signal.SIGINT, cleanup_and_exit)

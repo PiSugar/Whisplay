@@ -95,6 +95,13 @@ def resolve_runtime_config(args):
     if stored_settings.get("model") != model:
         stored_settings["model"] = model
         changed = True
+    autostart_app_id = str(stored_settings.get("autostart_app_id") or "").strip()
+    if (
+        "autostart_app_id" in stored_settings
+        and stored_settings.get("autostart_app_id") != autostart_app_id
+    ):
+        stored_settings["autostart_app_id"] = autostart_app_id
+        changed = True
     if not os.path.exists(settings_path) or changed:
         write_json_file(settings_path, stored_settings)
     return {
@@ -103,6 +110,7 @@ def resolve_runtime_config(args):
         "apps_dir": apps_dir,
         "pisugar_home_button": pisugar_home_button,
         "model": model,
+        "autostart_app_id": autostart_app_id,
     }
 
 

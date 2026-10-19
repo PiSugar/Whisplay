@@ -97,9 +97,13 @@ daemon 设置示例：
 {
   "apps_dir": "~/.whisplay-daemon/app",
   "model": "whisplay",
-  "pisugar_home_button": "single"
+  "pisugar_home_button": "single",
+  "autostart_app_id": ""
 }
 ```
+
+`autostart_app_id` 可填写 `~/.whisplay-daemon/app/` 中已注册 app 的 `app_id`，daemon
+每次启动时会自动启动该 app；保持为空字符串或省略该字段则停留在 daemon 桌面。
 
 Whisplay Joy 请把 `model` 设为 `whisplay-joy`。五轴按键映射为：S1/上
 （物理 pin 32，BCM12）、S2/右（pin 33，BCM13）、S4/下（pin 31，BCM6）、
@@ -146,7 +150,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
   * **功能**: 可选的本地硬件守护进程，独占 LCD、背光、RGB LED、按键和 app 生命周期，并通过本机 Unix Socket 暴露 app 注册、切换和共享 framebuffer 接口。
   * **协议**: 按行分隔的 JSON，固定 `version: 1`
   * **默认 Socket 路径**: `/tmp/whisplay-daemon.sock`
-  * **支持命令**: `health.ping`、`app.register`、`app.list`、`app.launch`、`app.focus.acquire`、`app.focus.release`、`app.exit.request`、`framebuffer.acquire`、`backlight.set`、`led.set`、`led.fade`、`button.get_state`、`events.subscribe`
+  * **支持命令**: `health.ping`、`app.register`、`app.list`、`app.launch`、`app.autostart.set`、`app.focus.acquire`、`app.focus.release`、`app.exit.request`、`framebuffer.acquire`、`backlight.set`、`led.set`、`led.fade`、`button.get_state`、`events.subscribe`
   * **桌面交互**: 单击切换 app、长按启动/切到前台，前台 app 内快速按 4 下请求退出并回到桌面
   * **内建系统页**: 默认包含 `Bluetooth`、`WiFi`、`Volume` 和 `Power` 四个入口，均由 daemon 自身渲染，无需外部 app 进程
   * **WiFi 输入方式**: Whisplay Joy 选择加密网络后会显示微型 QWERTY 屏幕键盘。S1/S2/S4/S3 分别向上/右/下/左移动，CENTER 或短按原 Whisplay 按钮选择高亮按键；`ABC` 切换大小写及数字符号，`DEL` 删除，`SPACE` 输入空格，`JOIN` 发起连接。按住原 Whisplay 按钮达到长按阈值时会立即退出键盘并闪烁红灯，无需等待松开。原版 Whisplay 仍支持外接键盘（回车/退格/ESC）。

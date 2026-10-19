@@ -122,6 +122,17 @@ Payload：
 
 通过 `app_id` 请求 daemon 启动一个 app。
 
+### `app.autostart.set`
+
+设置 daemon 每次启动时自动运行的 app。该 app 必须已经注册；传入空的 `app_id`
+可关闭开机自动启动。
+
+```json
+{
+  "app_id": "my-app"
+}
+```
+
 ### `app.focus.acquire`
 
 运行中的 app 请求进入前台。

@@ -98,9 +98,14 @@ Example daemon settings:
 {
   "apps_dir": "~/.whisplay-daemon/app",
   "model": "whisplay",
-  "pisugar_home_button": "single"
+  "pisugar_home_button": "single",
+  "autostart_app_id": ""
 }
 ```
+
+Set `autostart_app_id` to the `app_id` of a registered entry in
+`~/.whisplay-daemon/app/` to launch it whenever the daemon starts. Leave it
+empty or omit it to keep showing the daemon desktop after boot.
 
 Set `model` to `whisplay-joy` for the Whisplay Joy board. Its five-way switch
 uses S1/up (physical pin 32, BCM12), S2/right (pin 33, BCM13), S4/down
@@ -152,7 +157,7 @@ The repo root is organized by responsibility:
   * **Function**: Optional local hardware daemon that owns the LCD, backlight, RGB LED, button, and app lifecycle, and exposes a local Unix socket API for app registration, app switching, and shared framebuffer handoff.
   * **Protocol**: line-delimited JSON with `version: 1`
   * **Default socket path**: `/tmp/whisplay-daemon.sock`
-  * **Commands**: `health.ping`, `app.register`, `app.list`, `app.launch`, `app.focus.acquire`, `app.focus.release`, `app.exit.request`, `framebuffer.acquire`, `backlight.set`, `led.set`, `led.fade`, `button.get_state`, `events.subscribe`
+  * **Commands**: `health.ping`, `app.register`, `app.list`, `app.launch`, `app.autostart.set`, `app.focus.acquire`, `app.focus.release`, `app.exit.request`, `framebuffer.acquire`, `backlight.set`, `led.set`, `led.fade`, `button.get_state`, `events.subscribe`
   * **Desktop behavior**: single click cycles registered apps, long press launches/foregrounds the selected app, and 4 rapid clicks request exit from the foreground app unless it registered `exit_gesture: "none"`
   * **Built-in system pages**: includes `Bluetooth`, `WiFi`, `Volume`, and `Power` entries rendered by the daemon itself, without spawning an external app process
   * **Wi-Fi password input**: on Whisplay Joy, selecting a protected network opens a miniature QWERTY keyboard. S1/S2/S4/S3 move up/right/down/left, CENTER or a short press of the original Whisplay button selects the highlighted key, `ABC` switches letter/symbol case, `DEL` deletes, `SPACE` inserts a space, and `JOIN` connects. Holding the original Whisplay button leaves the keyboard as soon as the long-press threshold is reached and flashes the LED red; release is not required. The original Whisplay model continues to support an attached external keyboard (Enter / Backspace / ESC).
