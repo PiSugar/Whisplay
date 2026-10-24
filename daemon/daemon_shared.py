@@ -1,8 +1,23 @@
 import argparse
 import json
 import os
+import sys
 
 from PIL import Image
+
+
+RUNTIME_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "runtime"))
+if RUNTIME_DIR not in sys.path:
+    sys.path.append(RUNTIME_DIR)
+
+from whisplay_model import (  # noqa: E402
+    AUTO_MODEL,
+    DEFAULT_MODEL,
+    VALID_MODELS,
+    WHISPLAY_JOY_MODEL,
+    WHISPLAY_PLUS_MODEL,
+    resolve_model,
+)
 
 
 SCREEN_WIDTH = 240
@@ -32,11 +47,6 @@ DEFAULT_APP_LOG_PATH = os.path.join(DEFAULT_DAEMON_HOME, "daemon-app.log")
 STATUS_POLL_INTERVAL_SEC = 5.0
 DEFAULT_PISUGAR_HOME_BUTTON = "single"
 VALID_PISUGAR_HOME_BUTTONS = {"single", "double", "long", "none"}
-DEFAULT_MODEL = "whisplay"
-WHISPLAY_JOY_MODEL = "whisplay-joy"
-VALID_MODELS = {DEFAULT_MODEL, WHISPLAY_JOY_MODEL}
-
-
 def load_json_file(path: str) -> dict:
     try:
         with open(path, "r", encoding="utf-8") as fp:
@@ -89,12 +99,15 @@ def resolve_runtime_config(args):
     if stored_settings.get("pisugar_home_button") != pisugar_home_button:
         stored_settings["pisugar_home_button"] = pisugar_home_button
         changed = True
-    model = str(stored_settings.get("model", DEFAULT_MODEL)).strip().lower()
+    model = str(stored_settings.get("model", AUTO_MODEL)).strip().lower()
+    if not model:
+        model = AUTO_MODEL
     if model not in VALID_MODELS:
-        model = DEFAULT_MODEL
+        model = AUTO_MODEL
     if stored_settings.get("model") != model:
         stored_settings["model"] = model
         changed = True
+    effective_model, model_source = resolve_model(model)
     autostart_app_id = str(stored_settings.get("autostart_app_id") or "").strip()
     if (
         "autostart_app_id" in stored_settings
@@ -109,7 +122,9 @@ def resolve_runtime_config(args):
         "socket_path": DEFAULT_SOCKET_PATH,
         "apps_dir": apps_dir,
         "pisugar_home_button": pisugar_home_button,
-        "model": model,
+        "model": effective_model,
+        "configured_model": model,
+        "model_source": model_source,
         "autostart_app_id": autostart_app_id,
     }
 

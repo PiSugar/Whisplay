@@ -2,11 +2,19 @@ from __future__ import annotations
 
 import json
 import mmap
+import os
 import socket
 import threading
 import time
 
 from whisplay import WhisplayBoard
+from qmi8658 import ImuSample
+from whisplay_model import (
+    AUTO_MODEL,
+    VALID_MODELS,
+    WHISPLAY_JOY_MODEL,
+    detect_hat_model,
+)
 
 
 DEFAULT_DAEMON_SOCKET_PATH = "/tmp/whisplay-daemon.sock"
@@ -39,6 +47,14 @@ class WhisplayDaemonProxy:
         self.socket_path = socket_path
         self.button_press_callback = None
         self.button_release_callback = None
+        self.joystick_press_callback = None
+        self.joystick_release_callback = None
+        configured_model = os.getenv("WHISPLAY_MODEL", AUTO_MODEL).strip().lower()
+        self.model = (
+            configured_model
+            if configured_model in VALID_MODELS and configured_model != AUTO_MODEL
+            else detect_hat_model()
+        )
         self.exit_request_callback = None
         self.focus_revoked_callback = None
         self._button_down = False
@@ -74,10 +90,54 @@ class WhisplayDaemonProxy:
 
     def ping(self) -> bool:
         try:
-            self._send_request("health.ping")
+            response = self._send_request("health.ping")
+            model = str(response.get("payload", {}).get("model", "")).strip().lower()
+            if model in VALID_MODELS and model != AUTO_MODEL:
+                self.model = model
             return True
         except Exception:
             return False
+
+    def get_model(self) -> str:
+        """Return the daemon's effective model, with cached fallback."""
+        try:
+            response = self._send_request("hardware.get_info")
+            model = str(response.get("payload", {}).get("model", "")).strip().lower()
+            if model in VALID_MODELS and model != AUTO_MODEL:
+                self.model = model
+        except Exception:
+            pass
+        return self.model
+
+    def get_capabilities(self) -> dict[str, bool]:
+        try:
+            response = self._send_request("hardware.get_info")
+            capabilities = response.get("payload", {}).get("capabilities", {})
+            return {
+                "five_way": bool(capabilities.get("five_way")),
+                "motion": bool(capabilities.get("motion")),
+            }
+        except Exception:
+            return {
+                "five_way": self.model == WHISPLAY_JOY_MODEL,
+                "motion": self.model in {"whisplay-plus", WHISPLAY_JOY_MODEL},
+            }
+
+    def get_joystick_state(self) -> dict[str, bool]:
+        payload = self._send_request("joystick.get_state").get("payload", {})
+        state = payload.get("state", {})
+        return {
+            direction: bool(state.get(direction))
+            for direction in ("up", "right", "down", "left", "center")
+        }
+
+    def read_motion(self) -> ImuSample:
+        payload = self._send_request("motion.get_state").get("payload", {})
+        return ImuSample(
+            tuple(float(value) for value in payload["acceleration_g"]),
+            tuple(float(value) for value in payload["angular_rate_dps"]),
+            float(payload["timestamp"]),
+        )
 
     def register(self):
         payload = {
@@ -195,6 +255,12 @@ class WhisplayDaemonProxy:
     def on_button_release(self, callback):
         self.button_release_callback = callback
 
+    def on_joystick_press(self, callback):
+        self.joystick_press_callback = callback
+
+    def on_joystick_release(self, callback):
+        self.joystick_release_callback = callback
+
     def on_exit_request(self, callback):
         self.exit_request_callback = callback
 
@@ -236,6 +302,12 @@ class WhisplayDaemonProxy:
                             self._button_down = False
                             if self.button_release_callback:
                                 self.button_release_callback()
+                        elif name == "joystick_pressed":
+                            if self.joystick_press_callback:
+                                self.joystick_press_callback(str(payload.get("direction", "")))
+                        elif name == "joystick_released":
+                            if self.joystick_release_callback:
+                                self.joystick_release_callback(str(payload.get("direction", "")))
                         elif name == "app_exit_requested":
                             if self.exit_request_callback:
                                 self.exit_request_callback()
@@ -280,4 +352,8 @@ def create_whisplay_hardware(
         daemon.start_event_listener()
         daemon.acquire_foreground()
         return daemon
-    return WhisplayBoard()
+    model = daemon.model or detect_hat_model()
+    return WhisplayBoard(
+        enable_joystick=model == WHISPLAY_JOY_MODEL,
+        model=model,
+    )

@@ -97,7 +97,7 @@ Example daemon settings:
 ```json
 {
   "apps_dir": "~/.whisplay-daemon/app",
-  "model": "whisplay",
+  "model": "auto",
   "pisugar_home_button": "single",
   "autostart_app_id": ""
 }
@@ -107,12 +107,16 @@ Set `autostart_app_id` to the `app_id` of a registered entry in
 `~/.whisplay-daemon/app/` to launch it whenever the daemon starts. Leave it
 empty or omit it to keep showing the daemon desktop after boot.
 
-Set `model` to `whisplay-joy` for the Whisplay Joy board. Its five-way switch
+`model` defaults to `auto`: the daemon reads the PiSugar HAT EEPROM and maps
+product IDs `0x0001`, `0x0002`, and `0x0003` to `whisplay`, `whisplay-plus`,
+and `whisplay-joy`. Set a concrete value to override EEPROM detection.
+
+The Whisplay Joy five-way switch
 uses S1/up (physical pin 32, BCM12), S2/right (pin 33, BCM13), S4/down
-(pin 31, BCM6), S3/left (pin 29, BCM5), and CENTER (pin 37, BCM26). Up/down
+(pin 31, BCM6), S3/left (pin 36, BCM16), and CENTER (pin 37, BCM26). Up/down
 scroll daemon menus, right or CENTER confirms, and left returns. The original Whisplay
-button also confirms with a normal click. Joy input is ignored while an external
-app owns the foreground and resumes when the daemon regains focus.
+button also confirms with a normal click. Daemon navigation pauses while an external
+app owns the foreground; Joy press/release events are delivered to that app instead.
 
 `pisugar_home_button` controls which PiSugar button gesture returns from the foreground app back to daemon home. Supported values are `single`, `double`, `long`, and `none`. The default is `single`. When PiSugar 3 is detected on I2C bus 1 at `0x57`, the daemon reads the power-button state directly from register `0x02` and uses a power-button single click to return home, leaving the PiSugar custom-button single-click event free. Setting this option to `none` still disables the integration.
 
@@ -145,19 +149,19 @@ The repo root is organized by responsibility:
 
 #### 1. `runtime/whisplay.py`
 
-  * **Function**: Public Python entry point for the LCD, physical button, and LED helper classes.
+  * **Function**: Public Python entry point for the LCD, physical button, LED, five-way switch, and QMI8658 helper classes. Standalone apps can call `detect_model()` before opening hardware, or use `board.get_model()`, `board.get_joystick_state()`, and `board.read_motion()` after creating `WhisplayBoard`.
   * **Quick Verification**: Refer to `example/test.py` to quickly test the LCD, LED, and button functions.
 
 #### 1.1 `runtime/whisplay_client.py`
 
-  * **Function**: Python helper for daemon-mode apps.
+  * **Function**: Python helper for daemon-mode apps. The returned proxy exposes `board.get_model()` and reads the daemon's effective model through `hardware.get_info`.
 
 #### 1.2 `daemon/whisplay_daemon.py`
 
   * **Function**: Optional local hardware daemon that owns the LCD, backlight, RGB LED, button, and app lifecycle, and exposes a local Unix socket API for app registration, app switching, and shared framebuffer handoff.
   * **Protocol**: line-delimited JSON with `version: 1`
   * **Default socket path**: `/tmp/whisplay-daemon.sock`
-  * **Commands**: `health.ping`, `app.register`, `app.list`, `app.launch`, `app.autostart.set`, `app.focus.acquire`, `app.focus.release`, `app.exit.request`, `framebuffer.acquire`, `backlight.set`, `led.set`, `led.fade`, `button.get_state`, `events.subscribe`
+  * **Commands**: `health.ping`, `hardware.get_info`, `joystick.get_state`, `motion.get_state`, `app.register`, `app.list`, `app.launch`, `app.autostart.set`, `app.focus.acquire`, `app.focus.release`, `app.exit.request`, `framebuffer.acquire`, `backlight.set`, `led.set`, `led.fade`, `button.get_state`, `events.subscribe`
   * **Desktop behavior**: single click cycles registered apps, long press launches/foregrounds the selected app, and 4 rapid clicks request exit from the foreground app unless it registered `exit_gesture: "none"`
   * **Built-in system pages**: includes `Bluetooth`, `WiFi`, `Volume`, and `Power` entries rendered by the daemon itself, without spawning an external app process
   * **Wi-Fi password input**: on Whisplay Joy, selecting a protected network opens a miniature QWERTY keyboard. S1/S2/S4/S3 move up/right/down/left, CENTER or a short press of the original Whisplay button selects the highlighted key, `ABC` switches letter/symbol case, `DEL` deletes, `SPACE` inserts a space, and `JOIN` connects. Holding the original Whisplay button leaves the keyboard as soon as the long-press threshold is reached and flashes the LED red; release is not required. The original Whisplay model continues to support an attached external keyboard (Enter / Backspace / ESC).
@@ -225,7 +229,7 @@ The `example` directory contains 4 end-user demo programs. If you are using whis
 
 #### `run_test.sh`
 
-  * **Function**: Runs the end-to-end hardware test flow for screen, LED, speaker, button, microphone, and playback.
+  * **Function**: Runs the end-to-end hardware test flow for screen, LED, speaker, button, microphone, and playback. On Whisplay Joy it also guides the user through all five switch positions and renders a live 3D cube driven by the QMI8658 accelerometer and gyroscope.
   * **Usage**:
     ```shell
     cd example

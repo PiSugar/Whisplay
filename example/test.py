@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import signal
 import subprocess
@@ -20,7 +21,9 @@ if RUNTIME_DIR not in sys.path:
     sys.path.append(RUNTIME_DIR)
 
 from pillow_compat import draw_rounded_rectangle
+from qmi8658 import ComplementaryOrientation
 from whisplay_client import create_whisplay_hardware
+from whisplay_model import WHISPLAY_JOY_MODEL
 
 
 DATA_DIR = os.path.join(SCRIPT_DIR, "data")
@@ -29,6 +32,8 @@ TEST_WAV_PATH = os.path.join(DATA_DIR, "test.wav")
 RECORD_FILE_PATH = os.path.join(DATA_DIR, "run_test_record.wav")
 MAX_RECORD_SEC = 12
 INTRO_COUNTDOWN_SEC = 5
+MOTION_TEST_MIN_DURATION_SEC = 10.0
+MOTION_TEST_FPS = 20
 
 
 @dataclass
@@ -48,6 +53,12 @@ class RunTestFlow:
             use_daemon_default_log=True,
         )
         self.board.set_backlight(70)
+        self.model = (
+            self.board.get_model()
+            if hasattr(self.board, "get_model")
+            else os.getenv("WHISPLAY_MODEL", "whisplay")
+        )
+        self.joy_mode = self.model == WHISPLAY_JOY_MODEL
 
         if card_index is None:
             self.card_index, self.card_name = self._find_whisplay_card()
@@ -63,6 +74,8 @@ class RunTestFlow:
             "led": None,
             "speaker": None,
             "button": None,
+            "joystick": None,
+            "imu": None,
             "record": None,
         }
         self.steps = [
@@ -70,11 +83,24 @@ class RunTestFlow:
             TestStage("led", "LED Test", "RGB indicator changes"),
             TestStage("speaker", "Speaker Test", "Play confirmation sound"),
             TestStage("button", "Button Test", "Press and release detection"),
-            TestStage("record", "Mic Test", "Hold to record, release to play"),
-            TestStage("done", "Test Complete", "All checks finished"),
         ]
+        if self.joy_mode:
+            self.steps.extend(
+                [
+                    TestStage("joystick", "Five-way Test", "Press every direction once"),
+                    TestStage("imu", "Motion Test", "Rotate the live 3D cube"),
+                ]
+            )
+        self.steps.extend(
+            [
+                TestStage("record", "Mic Test", "Hold to record, release to play"),
+                TestStage("done", "Test Complete", "All checks finished"),
+            ]
+        )
         self.button_press_seen = False
         self.button_release_seen = False
+        self.joystick_pressed = set()
+        self.joystick_active = None
         self.record_started_at = 0.0
         self.record_result = "Not started"
         self._record_proc = None
@@ -95,6 +121,9 @@ class RunTestFlow:
 
         self.board.on_button_press(self._on_button_press)
         self.board.on_button_release(self._on_button_release)
+        if self.joy_mode and hasattr(self.board, "on_joystick_press"):
+            self.board.on_joystick_press(self._on_joystick_press)
+            self.board.on_joystick_release(self._on_joystick_release)
         if hasattr(self.board, "on_exit_request"):
             self.board.on_exit_request(self._on_exit_request)
         if hasattr(self.board, "on_focus_revoked"):
@@ -244,15 +273,47 @@ class RunTestFlow:
             elif self.phase == "record_recording":
                 self._stop_recording()
 
+    def _on_joystick_press(self, direction: str):
+        if direction not in {"up", "right", "down", "left", "center"}:
+            return
+        with self.lock:
+            if self.phase != "joystick":
+                return
+            self.joystick_active = direction
+            self.joystick_pressed.add(direction)
+            self._show_joystick_test()
+            if len(self.joystick_pressed) == 5:
+                self.results["joystick"] = True
+                self.phase = "joystick_done"
+
+    def _on_joystick_release(self, direction: str):
+        with self.lock:
+            if self.phase == "joystick" and self.joystick_active == direction:
+                self.joystick_active = None
+                self._show_joystick_test()
+
     def _rgb565_bytes(self, image: Image.Image) -> bytes:
+        try:
+            import numpy as np
+
+            pixels = np.asarray(image.convert("RGB"), dtype=np.uint16)
+            r = pixels[:, :, 0]
+            g = pixels[:, :, 1]
+            b = pixels[:, :, 2]
+            rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+            return rgb565.astype(">u2").tobytes()
+        except ImportError:
+            pass
+
         rgb = image.convert("RGB")
-        output = bytearray()
-        for y in range(rgb.height):
-            for x in range(rgb.width):
-                r, g, b = rgb.getpixel((x, y))
-                value = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
-                output.append((value >> 8) & 0xFF)
-                output.append(value & 0xFF)
+        pixels = rgb.tobytes()
+        output = bytearray((len(pixels) // 3) * 2)
+        for index in range(0, len(pixels), 3):
+            r, g, b = pixels[index:index + 3]
+            value = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+            target = (index // 3) * 2
+            output[target] = (value >> 8) & 0xFF
+            output[target + 1] = value & 0xFF
         return bytes(output)
 
     def _wrap_text(self, draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> list[str]:
@@ -325,6 +386,7 @@ class RunTestFlow:
         for font, gap, blank_gap in [
             (self.body_font, 6, 12),
             (self.body_compact_font, 4, 10),
+            (self.small_font, 2, 7),
         ]:
             wrapped_lines: list[str] = []
             for line in lines:
@@ -384,6 +446,113 @@ class RunTestFlow:
             step_override=step_override,
         )
         self.board.draw_image(0, 0, self.board.LCD_WIDTH, self.board.LCD_HEIGHT, frame)
+
+    def _step_number(self, key: str) -> int:
+        return next(
+            (index + 1 for index, stage in enumerate(self.steps) if stage.key == key),
+            1,
+        )
+
+    def _show_joystick_test(self):
+        width, height = self.board.LCD_WIDTH, self.board.LCD_HEIGHT
+        image = Image.new("RGB", (width, height), (11, 16, 24))
+        draw = ImageDraw.Draw(image)
+        draw_rounded_rectangle(
+            draw,
+            (12, 16, width - 12, height - 16),
+            radius=18,
+            fill=(20, 28, 40),
+            outline=(40, 55, 72),
+            width=2,
+        )
+        draw.text(
+            (24, 27),
+            f"STEP {self._step_number('joystick')}/{len(self.steps)}",
+            fill=(150, 205, 255),
+            font=self.small_font,
+        )
+        draw.text((24, 52), "Five-way Test", fill=(255, 255, 255), font=self.title_font)
+        draw.text((24, 83), "Press each key once", fill=(190, 205, 220), font=self.small_font)
+
+        positions = {
+            "up": (96, 106, 144, 146, "UP"),
+            "left": (43, 151, 91, 191, "LEFT"),
+            "center": (96, 151, 144, 191, "OK"),
+            "right": (149, 151, 197, 191, "RIGHT"),
+            "down": (96, 196, 144, 236, "DOWN"),
+        }
+        for direction, (x0, y0, x1, y1, label) in positions.items():
+            complete = direction in self.joystick_pressed
+            active = direction == self.joystick_active
+            fill = (70, 210, 125) if complete else (34, 47, 64)
+            outline = (255, 255, 255) if active else ((100, 255, 160) if complete else (75, 98, 125))
+            draw_rounded_rectangle(
+                draw,
+                (x0, y0, x1, y1),
+                radius=10,
+                fill=fill,
+                outline=outline,
+                width=3 if active else 2,
+            )
+            bbox = draw.textbbox((0, 0), label, font=self.small_compact_font)
+            draw.text(
+                ((x0 + x1 - (bbox[2] - bbox[0])) // 2, (y0 + y1 - (bbox[3] - bbox[1])) // 2 - 1),
+                label,
+                fill=(14, 24, 31) if complete else (225, 235, 245),
+                font=self.small_compact_font,
+            )
+
+        count = len(self.joystick_pressed)
+        footer = f"Detected {count}/5"
+        bbox = draw.textbbox((0, 0), footer, font=self.small_font)
+        draw.text(((width - (bbox[2] - bbox[0])) // 2, 247), footer, fill=(150, 205, 255), font=self.small_font)
+        self.board.draw_image(0, 0, width, height, self._rgb565_bytes(image))
+
+    @staticmethod
+    def _rotated_cube_points(roll: float, pitch: float, yaw: float):
+        rx, ry, rz = (math.radians(value) for value in (roll, pitch, yaw))
+        sx, cx = math.sin(rx), math.cos(rx)
+        sy, cy = math.sin(ry), math.cos(ry)
+        sz, cz = math.sin(rz), math.cos(rz)
+        points = []
+        for x, y, z in (
+            (-1, -1, -1), (1, -1, -1), (1, 1, -1), (-1, 1, -1),
+            (-1, -1, 1), (1, -1, 1), (1, 1, 1), (-1, 1, 1),
+        ):
+            y, z = y * cx - z * sx, y * sx + z * cx
+            x, z = x * cy + z * sy, -x * sy + z * cy
+            x, y = x * cz - y * sz, x * sz + y * cz
+            depth = 4.2 + z
+            points.append((120 + x * 105 / depth, 157 + y * 105 / depth))
+        return points
+
+    def _show_motion_cube(self, orientation, angular_rate, status="Move the HAT"):
+        width, height = self.board.LCD_WIDTH, self.board.LCD_HEIGHT
+        image = Image.new("RGB", (width, height), (8, 13, 22))
+        draw = ImageDraw.Draw(image)
+        draw.text(
+            (20, 19),
+            f"STEP {self._step_number('imu')}/{len(self.steps)}",
+            fill=(125, 200, 255),
+            font=self.small_font,
+        )
+        draw.text((20, 43), "Motion Test", fill=(255, 255, 255), font=self.title_font)
+        draw.text((20, 74), status, fill=(175, 198, 220), font=self.small_font)
+        points = self._rotated_cube_points(*orientation)
+        edges = (
+            (0, 1), (1, 2), (2, 3), (3, 0),
+            (4, 5), (5, 6), (6, 7), (7, 4),
+            (0, 4), (1, 5), (2, 6), (3, 7),
+        )
+        for start, end in edges:
+            draw.line((points[start], points[end]), fill=(74, 205, 255), width=3)
+        for x, y in points:
+            draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill=(215, 248, 255))
+        speed = math.sqrt(sum(value * value for value in angular_rate))
+        footer = f"Live gyro  {speed:5.1f} deg/s"
+        draw_rounded_rectangle(draw, (20, 240, width - 20, 268), radius=10, fill=(24, 38, 54))
+        draw.text((31, 247), footer, fill=(145, 215, 255), font=self.small_compact_font)
+        self.board.draw_image(0, 0, width, height, self._rgb565_bytes(image))
 
     def _load_test_image(self) -> bytes | None:
         if not os.path.exists(TEST_IMAGE_PATH):
@@ -826,13 +995,19 @@ class RunTestFlow:
                 return f"{name}: CHECK"
             return f"{name}: SKIP"
 
-        return [
-            label("Display", self.results["display"]),
-            label("LED", self.results["led"]),
-            label("Speaker", self.results["speaker"]),
-            label("Button", self.results["button"]),
-            label("Mic", self.results["record"]),
+        lines = [
+            f"{label('Display', self.results['display'])}   {label('LED', self.results['led'])}",
+            f"{label('Spk', self.results['speaker'])}   {label('Btn', self.results['button'])}",
         ]
+        if self.joy_mode:
+            lines.extend(
+                [
+                    label("Five-way", self.results["joystick"]),
+                    label("Motion", self.results["imu"]),
+                ]
+            )
+        lines.append(label("Mic", self.results["record"]))
+        return lines
 
     def _run_button_test(self):
         self.step_index = 3
@@ -860,8 +1035,98 @@ class RunTestFlow:
             self.phase = "record_ready"
         return self.running
 
+    def _run_joystick_test(self):
+        self.step_index = self._step_number("joystick") - 1
+        self.phase = "joystick"
+        self.joystick_pressed.clear()
+        self.joystick_active = None
+        self._show_joystick_test()
+        while self.running and self.phase != "joystick_done":
+            time.sleep(0.05)
+        if self.running:
+            self.board.set_rgb(0, 255, 100)
+            self._show_joystick_test()
+            if not self._wait(0.8):
+                return False
+            self.board.set_rgb(0, 0, 0)
+        return self.running
+
+    def _run_motion_test(self):
+        self.step_index = self._step_number("imu") - 1
+        self.phase = "imu"
+        self._show_status(
+            "Motion Test",
+            [
+                "Initializing QMI8658...",
+                "",
+                "Keep the HAT still",
+                "for calibration.",
+            ],
+            accent=(70, 180, 255),
+            footer="Calibrating motion sensor",
+            step_override=self._step_number("imu"),
+        )
+        try:
+            calibration = []
+            for _ in range(24):
+                if not self.running:
+                    return False
+                calibration.append(self.board.read_motion())
+                time.sleep(0.012)
+            orientation_filter = ComplementaryOrientation()
+            orientation_filter.set_gyro_bias(calibration)
+            orientation = orientation_filter.update(calibration[-1])
+            baseline = orientation
+            motion_seen_at = None
+            live_started_at = time.monotonic()
+            while self.running:
+                frame_started_at = time.monotonic()
+                sample = self.board.read_motion()
+                orientation = orientation_filter.update(sample)
+                speed = math.sqrt(sum(value * value for value in sample.angular_rate_dps))
+                angle_delta = max(
+                    abs(orientation[0] - baseline[0]),
+                    abs(orientation[1] - baseline[1]),
+                )
+                if motion_seen_at is None and (speed >= 22.0 or angle_delta >= 12.0):
+                    motion_seen_at = time.monotonic()
+                    self.results["imu"] = True
+                    self.board.set_rgb(0, 220, 110)
+                elapsed = time.monotonic() - live_started_at
+                seconds_left = max(
+                    0,
+                    math.ceil(MOTION_TEST_MIN_DURATION_SEC - elapsed),
+                )
+                if motion_seen_at is not None:
+                    status = f"Motion detected  {seconds_left}s"
+                else:
+                    status = f"Rotate or tilt  {seconds_left}s"
+                self._show_motion_cube(orientation, sample.angular_rate_dps, status=status)
+                if motion_seen_at is not None and elapsed >= MOTION_TEST_MIN_DURATION_SEC:
+                    break
+                frame_elapsed = time.monotonic() - frame_started_at
+                time.sleep(max(0.0, (1.0 / MOTION_TEST_FPS) - frame_elapsed))
+        except Exception as exc:
+            self.results["imu"] = False
+            self._show_status(
+                "Motion Test",
+                [
+                    "QMI8658 test failed.",
+                    "",
+                    "Check the I2C connection",
+                    "and sensor power.",
+                ],
+                accent=(255, 85, 85),
+                footer=str(exc)[:42],
+                step_override=self._step_number("imu"),
+            )
+            return self._wait(1.8)
+        finally:
+            self.board.set_rgb(0, 0, 0)
+        return self.running
+
     def _run_record_test(self):
-        self.step_index = 4
+        self.step_index = self._step_number("record") - 1
         self.phase = "record_ready"
         self.board.set_rgb(80, 80, 255)
         self._show_status(
@@ -876,7 +1141,7 @@ class RunTestFlow:
             ],
             accent=(80, 110, 255),
             footer="Waiting for hold-to-record",
-            step_override=5,
+            step_override=self._step_number("record"),
         )
         while self.running and self.phase != "done":
             time.sleep(0.05)
@@ -894,7 +1159,11 @@ class RunTestFlow:
         print(" Whisplay Run Test")
         print("=" * 52)
         print(f"Using Whisplay audio card: {self.card_name} (index {self.card_index})")
-        print("Flow: display -> LED -> speaker -> button -> mic")
+        flow = "display -> LED -> speaker -> button"
+        if self.joy_mode:
+            flow += " -> five-way -> motion"
+        print(f"Model: {self.model}")
+        print(f"Flow: {flow} -> mic")
         print("Mic test: hold to record, release to play back")
         print("=" * 52)
 
@@ -909,6 +1178,11 @@ class RunTestFlow:
                 return
             if not self._run_button_test():
                 return
+            if self.joy_mode:
+                if not self._run_joystick_test():
+                    return
+                if not self._run_motion_test():
+                    return
             self._run_record_test()
             while self.running:
                 time.sleep(0.1)

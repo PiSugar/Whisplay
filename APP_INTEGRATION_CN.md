@@ -77,6 +77,73 @@ daemon 有两种状态：
 
 ## 核心命令
 
+### `hardware.get_info`
+
+返回 EEPROM 自动检测或用户强制配置后，daemon 当前实际生效的硬件型号：
+
+```json
+{
+  "ok": true,
+  "payload": {
+    "model": "whisplay-joy",
+    "capabilities": {
+      "five_way": true,
+      "motion": true
+    }
+  }
+}
+```
+
+使用 `create_whisplay_hardware()` 的 app，无论处于 daemon 模式还是直连模式，
+都可以使用同一个方法：
+
+```python
+board = create_whisplay_hardware()
+model = board.get_model()
+```
+
+### `joystick.get_state`
+
+返回 Joy 五轴按键的当前状态，`true` 表示正在按下：
+
+```json
+{
+  "ok": true,
+  "payload": {
+    "state": {
+      "up": false,
+      "right": false,
+      "down": false,
+      "left": false,
+      "center": true
+    }
+  }
+}
+```
+
+前台 app 还会收到带 `direction` 字段的 `joystick_pressed` 和
+`joystick_released` 事件。使用 Python helper 时，daemon 和直连模式都可以调用
+`board.get_joystick_state()`、`board.on_joystick_press(callback)` 和
+`board.on_joystick_release(callback)`。
+
+### `motion.get_state`
+
+读取一帧 QMI8658 加速度计和陀螺仪数据：
+
+```json
+{
+  "ok": true,
+  "payload": {
+    "acceleration_g": [0.01, -0.02, 0.99],
+    "angular_rate_dps": [0.2, -0.1, 0.4],
+    "timestamp": 12345.67
+  }
+}
+```
+
+Python helper 对应 `board.read_motion()`，返回包含 `acceleration_g`、
+`angular_rate_dps` 和 `timestamp` 字段的 `ImuSample`。
+
 ### `app.register`
 
 将 app 注册到 daemon 的 app 列表中。

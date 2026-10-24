@@ -43,6 +43,7 @@ from daemon_shared import (
     VALID_EXIT_GESTURES,
     VALID_PISUGAR_HOME_BUTTONS,
     WHISPLAY_JOY_MODEL,
+    WHISPLAY_PLUS_MODEL,
     load_json_file,
     parse_args,
     resolve_runtime_config,
@@ -73,7 +74,7 @@ class WhisplayDaemon:
         self.event_broadcaster = EventBroadcaster()
         self.model = str(model).strip().lower()
         self.joy_mode = self.model == WHISPLAY_JOY_MODEL
-        self.board = WhisplayBoard(enable_joystick=self.joy_mode)
+        self.board = WhisplayBoard(enable_joystick=self.joy_mode, model=self.model)
         self.desktop = DesktopRenderer(self.board, SCRIPT_DIR, joy_mode=self.joy_mode)
         self.pisugar = PiSugarManager()
         self.status_poller = StatusPoller(self.pisugar)
@@ -164,6 +165,11 @@ class WhisplayDaemon:
             if self._screen_locked:
                 return
             if self.foreground_app_id and not self.internal_apps.is_internal_app(self.foreground_app_id):
+                self.event_broadcaster.broadcast(
+                    "joystick_pressed",
+                    {"app_id": self.foreground_app_id, "direction": direction},
+                    app_id=self.foreground_app_id,
+                )
                 return
             if self.foreground_app_id and self.internal_apps.text_input_active():
                 keyboard_action = {
@@ -193,9 +199,17 @@ class WhisplayDaemon:
         self._handle_keyboard_action(action)
 
     def _on_joystick_released(self, direction: str):
-        # Navigation is edge-triggered on press. Releases are intentionally
-        # ignored, and all Joy input is paused while an external app owns focus.
-        return
+        with self.state_lock:
+            if self._screen_locked:
+                return
+            if self.foreground_app_id and not self.internal_apps.is_internal_app(
+                self.foreground_app_id
+            ):
+                self.event_broadcaster.broadcast(
+                    "joystick_released",
+                    {"app_id": self.foreground_app_id, "direction": direction},
+                    app_id=self.foreground_app_id,
+                )
 
     def _normalize_priority(self, value) -> int:
         try:
@@ -569,6 +583,7 @@ class WhisplayDaemon:
             return
         env = os.environ.copy()
         env.update(app.env or {})
+        env["WHISPLAY_MODEL"] = self.model
         if app.use_daemon_default_log:
             env["WHISPLAY_DAEMON_DEFAULT_LOG"] = DEFAULT_APP_LOG_PATH
         cwd = app.cwd or None
@@ -934,6 +949,37 @@ class WhisplayDaemon:
                             "pixel_format": PIXEL_FORMAT,
                         },
                         "foreground_app_id": self.foreground_app_id,
+                        "model": self.model,
+                    },
+                }, False
+
+            if cmd == "hardware.get_info":
+                return {
+                    "ok": True,
+                    "payload": {
+                        "model": self.model,
+                        "capabilities": {
+                            "five_way": self.joy_mode,
+                            "motion": self.model
+                            in {WHISPLAY_PLUS_MODEL, WHISPLAY_JOY_MODEL},
+                        },
+                    },
+                }, False
+
+            if cmd == "joystick.get_state":
+                return {
+                    "ok": True,
+                    "payload": {"state": self.board.get_joystick_state()},
+                }, False
+
+            if cmd == "motion.get_state":
+                sample = self.board.read_motion()
+                return {
+                    "ok": True,
+                    "payload": {
+                        "acceleration_g": list(sample.acceleration_g),
+                        "angular_rate_dps": list(sample.angular_rate_dps),
+                        "timestamp": sample.timestamp,
                     },
                 }, False
 

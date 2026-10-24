@@ -92,7 +92,7 @@ install -d -m 0755 "$APPS_DIR"
 cat > "$SETTINGS_PATH" <<EOF
 {
   "apps_dir": "$APPS_DIR",
-  "model": "whisplay",
+  "model": "auto",
   "autostart_app_id": ""
 }
 EOF
@@ -125,7 +125,7 @@ After=network.target
 Type=simple
 User=$TARGET_USER
 Group=audio
-SupplementaryGroups=audio video gpio input
+SupplementaryGroups=audio video gpio input i2c
 WorkingDirectory=$PROJECT_ROOT
 ExecStart=$PYTHON_BIN $PROJECT_ROOT/daemon/whisplay_daemon.py
 Environment=HOME=$USER_HOME

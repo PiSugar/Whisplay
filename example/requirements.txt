@@ -2,3 +2,4 @@ pygame
 Pillow
 spidev
 gpiod
+smbus2

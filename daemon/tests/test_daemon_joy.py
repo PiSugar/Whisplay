@@ -26,16 +26,17 @@ except ImportError:
     pil_module.ImageFont = SimpleNamespace()
     sys.modules["PIL"] = pil_module
 
-from daemon_shared import resolve_runtime_config
+from daemon_shared import AUTO_MODEL, resolve_runtime_config
 from whisplay_daemon import WhisplayDaemon
 from whisplay import WhisplayBoard
+from whisplay_client import WhisplayDaemonProxy
 
 
 class JoyConfigTests(unittest.TestCase):
     def test_physical_switch_direction_mapping(self):
         self.assertEqual(
             WhisplayBoard.JOYSTICK_PINS,
-            {"up": 32, "right": 33, "down": 31, "left": 29, "center": 37},
+            {"up": 32, "right": 33, "down": 31, "left": 36, "center": 37},
         )
 
     def test_loads_whisplay_joy_model(self):
@@ -48,7 +49,7 @@ class JoyConfigTests(unittest.TestCase):
             )
             self.assertEqual(config["model"], "whisplay-joy")
 
-    def test_unknown_model_falls_back_to_whisplay(self):
+    def test_unknown_model_falls_back_to_eeprom_detection(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = os.path.join(temp_dir, "settings.json")
             with open(path, "w", encoding="utf-8") as fp:
@@ -56,7 +57,92 @@ class JoyConfigTests(unittest.TestCase):
             config = resolve_runtime_config(
                 SimpleNamespace(settings_path=path, apps_dir=temp_dir)
             )
-            self.assertEqual(config["model"], "whisplay")
+            self.assertEqual(config["configured_model"], AUTO_MODEL)
+            self.assertEqual(config["model_source"], "eeprom")
+
+    def test_concrete_model_forces_override(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = os.path.join(temp_dir, "settings.json")
+            with open(path, "w", encoding="utf-8") as fp:
+                json.dump({"model": "whisplay-plus"}, fp)
+            config = resolve_runtime_config(
+                SimpleNamespace(settings_path=path, apps_dir=temp_dir)
+            )
+            self.assertEqual(config["model"], "whisplay-plus")
+            self.assertEqual(config["model_source"], "config")
+
+    def test_direct_board_exposes_model_method(self):
+        board = WhisplayBoard.__new__(WhisplayBoard)
+        board.model = "whisplay-joy"
+        self.assertEqual(board.get_model(), "whisplay-joy")
+        self.assertEqual(
+            board.get_capabilities(),
+            {"five_way": True, "motion": True},
+        )
+
+    def test_direct_board_reads_five_way_state(self):
+        board = WhisplayBoard.__new__(WhisplayBoard)
+        board.enable_joystick = True
+        pressed_pins = {32, 37}
+        board._gpio_input = lambda pin: 0 if pin in pressed_pins else 1
+        self.assertEqual(
+            board.get_joystick_state(),
+            {
+                "up": True,
+                "right": False,
+                "down": False,
+                "left": False,
+                "center": True,
+            },
+        )
+
+    def test_daemon_proxy_reads_current_model(self):
+        proxy = WhisplayDaemonProxy.__new__(WhisplayDaemonProxy)
+        proxy.model = "whisplay"
+        proxy._send_request = lambda command: {
+            "payload": {"model": "whisplay-joy"}
+        }
+        self.assertEqual(proxy.get_model(), "whisplay-joy")
+
+    def test_hardware_info_command_returns_effective_model(self):
+        daemon = WhisplayDaemon.__new__(WhisplayDaemon)
+        daemon.state_lock = threading.RLock()
+        daemon.model = "whisplay-joy"
+        daemon.joy_mode = True
+        response, keep_open = daemon.handle_command(
+            {"version": 1, "cmd": "hardware.get_info", "payload": {}},
+            None,
+        )
+        self.assertFalse(keep_open)
+        self.assertEqual(response["payload"]["model"], "whisplay-joy")
+        self.assertEqual(
+            response["payload"]["capabilities"],
+            {"five_way": True, "motion": True},
+        )
+
+    def test_hardware_input_commands_return_button_and_motion_data(self):
+        daemon = WhisplayDaemon.__new__(WhisplayDaemon)
+        daemon.state_lock = threading.RLock()
+        sample = SimpleNamespace(
+            acceleration_g=(0.1, 0.2, 0.9),
+            angular_rate_dps=(1.0, 2.0, 3.0),
+            timestamp=12.5,
+        )
+        daemon.board = SimpleNamespace(
+            get_joystick_state=lambda: {"up": True, "center": False},
+            read_motion=lambda: sample,
+        )
+        joystick, _ = daemon.handle_command(
+            {"version": 1, "cmd": "joystick.get_state", "payload": {}},
+            None,
+        )
+        motion, _ = daemon.handle_command(
+            {"version": 1, "cmd": "motion.get_state", "payload": {}},
+            None,
+        )
+        self.assertTrue(joystick["payload"]["state"]["up"])
+        self.assertEqual(motion["payload"]["acceleration_g"], [0.1, 0.2, 0.9])
+        self.assertEqual(motion["payload"]["angular_rate_dps"], [1.0, 2.0, 3.0])
 
 
 class JoyInteractionTests(unittest.TestCase):
@@ -90,6 +176,21 @@ class JoyInteractionTests(unittest.TestCase):
         for direction in ("up", "right", "down", "left", "center"):
             daemon._on_joystick_pressed(direction)
         self.assertEqual(daemon.actions, [])
+
+    def test_external_app_receives_joy_events(self):
+        daemon = self.make_daemon()
+        daemon.foreground_app_id = "external-app"
+        events = []
+        daemon.event_broadcaster = SimpleNamespace(
+            broadcast=lambda *args, **kwargs: events.append((args, kwargs))
+        )
+        daemon._on_joystick_pressed("left")
+        daemon._on_joystick_released("left")
+        self.assertEqual(
+            [event[0][0] for event in events],
+            ["joystick_pressed", "joystick_released"],
+        )
+        self.assertEqual(events[0][0][1]["direction"], "left")
 
     def test_all_directions_navigate_wifi_screen_keyboard(self):
         daemon = self.make_daemon()

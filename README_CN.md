@@ -96,7 +96,7 @@ daemon 设置示例：
 ```json
 {
   "apps_dir": "~/.whisplay-daemon/app",
-  "model": "whisplay",
+  "model": "auto",
   "pisugar_home_button": "single",
   "autostart_app_id": ""
 }
@@ -105,11 +105,16 @@ daemon 设置示例：
 `autostart_app_id` 可填写 `~/.whisplay-daemon/app/` 中已注册 app 的 `app_id`，daemon
 每次启动时会自动启动该 app；保持为空字符串或省略该字段则停留在 daemon 桌面。
 
-Whisplay Joy 请把 `model` 设为 `whisplay-joy`。五轴按键映射为：S1/上
+`model` 默认为 `auto`：daemon 会读取 PiSugar HAT EEPROM，并将 product ID
+`0x0001`、`0x0002`、`0x0003` 分别识别为 `whisplay`、`whisplay-plus`、
+`whisplay-joy`。用户也可以填写具体型号来强制覆盖 EEPROM 检测结果。
+
+Whisplay Joy 五轴按键映射为：S1/上
 （物理 pin 32，BCM12）、S2/右（pin 33，BCM13）、S4/下（pin 31，BCM6）、
-S3/左（pin 29，BCM5）、CENTER（pin 37，BCM26）。daemon 中上/下用于菜单
+S3/左（pin 36，BCM16）、CENTER（pin 37，BCM26）。daemon 中上/下用于菜单
 滚动，右键或 CENTER 确认，左键返回；原 Whisplay 按钮也可单击确认。外部 app
-获得前台后 daemon 会忽略五轴输入，返回 daemon 后自动恢复。
+获得前台后 daemon 暂停自身的五轴导航，并将五轴按下/松开事件转交给该 app；
+返回 daemon 后自动恢复菜单导航。
 
 `pisugar_home_button` 用于控制 PiSugar 的哪个按键事件会触发“从前台 app 返回 daemon 首页”。支持 `single`、`double`、`long`、`none`，默认值为 `single`。检测到 PiSugar3（I²C bus 1、地址 `0x57`）时，daemon 会直接读取 `0x02` 寄存器的电源键状态，以电源键单击返回首页，不再占用 PiSugar 自定义按钮的单击事件；设为 `none` 仍可关闭此功能。
 
@@ -138,19 +143,19 @@ tail -f ~/.whisplay-daemon/daemon-app.log
 
 #### 1. `runtime/whisplay.py`
 
-  * **功能**: LCD、物理按键和 LED 的公开 Python 入口。
+  * **功能**: LCD、物理按键、LED、五轴按键和 QMI8658 的公开 Python 入口。单独运行的 app 可在打开硬件前调用 `detect_model()`，或在创建 `WhisplayBoard` 后调用 `board.get_model()`、`board.get_joystick_state()` 和 `board.read_motion()`。
   * **快速验证**: 参考 `example/test.py` 文件，快速测试 LCD、LED 和按键功能。
 
 #### 1.1 `runtime/whisplay_client.py`
 
-  * **功能**: daemon 模式的 Python 客户端 helper。
+  * **功能**: daemon 模式的 Python 客户端 helper。返回的 proxy 同样提供 `board.get_model()`，并通过 `hardware.get_info` 获取 daemon 当前生效的型号。
 
 #### 1.2 `daemon/whisplay_daemon.py`
 
   * **功能**: 可选的本地硬件守护进程，独占 LCD、背光、RGB LED、按键和 app 生命周期，并通过本机 Unix Socket 暴露 app 注册、切换和共享 framebuffer 接口。
   * **协议**: 按行分隔的 JSON，固定 `version: 1`
   * **默认 Socket 路径**: `/tmp/whisplay-daemon.sock`
-  * **支持命令**: `health.ping`、`app.register`、`app.list`、`app.launch`、`app.autostart.set`、`app.focus.acquire`、`app.focus.release`、`app.exit.request`、`framebuffer.acquire`、`backlight.set`、`led.set`、`led.fade`、`button.get_state`、`events.subscribe`
+  * **支持命令**: `health.ping`、`hardware.get_info`、`joystick.get_state`、`motion.get_state`、`app.register`、`app.list`、`app.launch`、`app.autostart.set`、`app.focus.acquire`、`app.focus.release`、`app.exit.request`、`framebuffer.acquire`、`backlight.set`、`led.set`、`led.fade`、`button.get_state`、`events.subscribe`
   * **桌面交互**: 单击切换 app、长按启动/切到前台，前台 app 内快速按 4 下请求退出并回到桌面
   * **内建系统页**: 默认包含 `Bluetooth`、`WiFi`、`Volume` 和 `Power` 四个入口，均由 daemon 自身渲染，无需外部 app 进程
   * **WiFi 输入方式**: Whisplay Joy 选择加密网络后会显示微型 QWERTY 屏幕键盘。S1/S2/S4/S3 分别向上/右/下/左移动，CENTER 或短按原 Whisplay 按钮选择高亮按键；`ABC` 切换大小写及数字符号，`DEL` 删除，`SPACE` 输入空格，`JOIN` 发起连接。按住原 Whisplay 按钮达到长按阈值时会立即退出键盘并闪烁红灯，无需等待松开。原版 Whisplay 仍支持外接键盘（回车/退格/ESC）。
@@ -226,7 +231,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
 
 #### `run_test.sh`
 
-  * **功能**: 运行完整硬件测试流程，覆盖屏幕、LED、扬声器、按键、麦克风和回放。
+  * **功能**: 运行完整硬件测试流程，覆盖屏幕、LED、扬声器、按键、麦克风和回放。检测到 Whisplay Joy 时，还会用图形界面引导用户依次按完五轴按键，并用 QMI8658 加速度计和陀螺仪的实时姿态数据驱动 3D 正方体旋转。
   * **使用方法**:
     ```shell
     cd example

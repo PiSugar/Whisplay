@@ -77,6 +77,75 @@ Each response is one JSON object per line:
 
 ## Core Commands
 
+### `hardware.get_info`
+
+Return the daemon's effective hardware model after EEPROM auto-detection or a
+user override:
+
+```json
+{
+  "ok": true,
+  "payload": {
+    "model": "whisplay-joy",
+    "capabilities": {
+      "five_way": true,
+      "motion": true
+    }
+  }
+}
+```
+
+Apps using `create_whisplay_hardware()` can use the same interface in daemon
+and standalone modes:
+
+```python
+board = create_whisplay_hardware()
+model = board.get_model()
+```
+
+### `joystick.get_state`
+
+Return the current state of all five Joy switches. `true` means pressed:
+
+```json
+{
+  "ok": true,
+  "payload": {
+    "state": {
+      "up": false,
+      "right": false,
+      "down": false,
+      "left": false,
+      "center": true
+    }
+  }
+}
+```
+
+Foreground apps also receive `joystick_pressed` and `joystick_released` events
+with a `direction` field. With the Python helper, use
+`board.get_joystick_state()`, `board.on_joystick_press(callback)`, and
+`board.on_joystick_release(callback)` in both daemon and standalone modes.
+
+### `motion.get_state`
+
+Read one QMI8658 accelerometer and gyroscope sample:
+
+```json
+{
+  "ok": true,
+  "payload": {
+    "acceleration_g": [0.01, -0.02, 0.99],
+    "angular_rate_dps": [0.2, -0.1, 0.4],
+    "timestamp": 12345.67
+  }
+}
+```
+
+The Python helper exposes the same operation as `board.read_motion()` and
+returns an `ImuSample` with `acceleration_g`, `angular_rate_dps`, and
+`timestamp` fields.
+
 ### `app.register`
 
 Register the app in the daemon registry.

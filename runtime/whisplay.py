@@ -7,6 +7,13 @@ import glob
 import threading
 import gpiod
 
+from qmi8658 import QMI8658
+from whisplay_model import (
+    WHISPLAY_JOY_MODEL,
+    WHISPLAY_PLUS_MODEL,
+    detect_hat_model as _detect_hat_model,
+)
+
 # Detect gpiod API version: v1 has LINE_REQ_DIR_OUT; v2 has LineSettings
 _GPIOD_V2 = hasattr(gpiod, 'LineSettings')
 
@@ -77,6 +84,11 @@ def _detect_platform():
 
 
 PLATFORM, PLATFORM_MODEL = _detect_platform()
+
+
+def detect_model() -> str:
+    """Detect the installed Whisplay model from the PiSugar HAT EEPROM."""
+    return _detect_hat_model()
 
 
 # ==================== Pin Mappings ====================
@@ -363,14 +375,21 @@ class WhisplayBoard:
         "up": 32,      # S1 / BCM12
         "right": 33,   # S2 / BCM13
         "down": 31,    # S4 / BCM6
-        "left": 29,    # S3 / BCM5
+        "left": 36,    # S3 / BCM16
         "center": 37,  # CENTER / BCM26
     }
     JOYSTICK_DEBOUNCE_SEC = 0.02
 
-    def __init__(self, enable_joystick=False):
+    def __init__(self, enable_joystick=None, model=None):
         self.platform = PLATFORM
-        self.enable_joystick = bool(enable_joystick)
+        self.model = str(model or detect_model()).strip().lower()
+        self.enable_joystick = (
+            self.model == WHISPLAY_JOY_MODEL
+            if enable_joystick is None
+            else bool(enable_joystick)
+        )
+        self._motion_sensor = None
+        self._motion_lock = threading.RLock()
         self.backlight_pwm = None
         self._current_r = 0
         self._current_g = 0
@@ -431,6 +450,16 @@ class WhisplayBoard:
         self._reset_lcd()
         self._init_display()
         self.fill_screen(0)
+
+    def get_model(self) -> str:
+        """Return the effective model for direct-hardware applications."""
+        return self.model
+
+    def get_capabilities(self) -> dict[str, bool]:
+        return {
+            "five_way": self.model == WHISPLAY_JOY_MODEL,
+            "motion": self.model in {WHISPLAY_PLUS_MODEL, WHISPLAY_JOY_MODEL},
+        }
 
     # ==================== GPIO Initialization (gpiod, unified) ====================
     def _init_gpio(self):
@@ -833,8 +862,28 @@ class WhisplayBoard:
     def on_joystick_release(self, callback):
         self.joystick_release_callback = callback
 
+    def get_joystick_state(self) -> dict[str, bool]:
+        if not self.enable_joystick:
+            raise RuntimeError("five-way switch is not enabled for this model")
+        return {
+            direction: self._gpio_input(pin) == 0
+            for direction, pin in self.JOYSTICK_PINS.items()
+        }
+
+    def read_motion(self):
+        if not self.get_capabilities()["motion"]:
+            raise RuntimeError("motion sensor is not available for this model")
+        with self._motion_lock:
+            if self._motion_sensor is None:
+                self._motion_sensor = QMI8658()
+            return self._motion_sensor.read()
+
     # ========== Cleanup ==========
     def cleanup(self):
+        with self._motion_lock:
+            if self._motion_sensor is not None:
+                self._motion_sensor.close()
+                self._motion_sensor = None
         # Stop backlight PWM
         if self.backlight_pwm is not None:
             self.backlight_pwm.stop()
