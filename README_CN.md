@@ -67,7 +67,7 @@ sudo bash run_test.sh
 当前 daemon 还内置了四个系统入口：
 
 - `Bluetooth`：进入内部页面后可扫描附近蓝牙设备，并对选中设备执行绑定/解绑
-- `WiFi`：进入内部页面后可扫描附近 Wi‑Fi，选择网络并连接；加密网络会进入密码输入页，密码输入依赖设备接入的外接键盘
+- `WiFi`：进入内部页面后可扫描附近 Wi‑Fi，选择网络并连接；Whisplay Joy 可使用屏幕键盘输入加密网络密码，原版型号仍支持外接键盘
 - `Volume`：进入内部页面后可调节扬声器音量
 - `Power`：进入 Power Menu，可锁屏、重启或关闭设备；锁屏后背光关闭，RGB 灯显示蓝色呼吸效果，按下 Whisplay 按钮即可唤醒
 
@@ -96,9 +96,20 @@ daemon 设置示例：
 ```json
 {
   "apps_dir": "~/.whisplay-daemon/app",
-  "pisugar_home_button": "single"
+  "model": "whisplay",
+  "pisugar_home_button": "single",
+  "autostart_app_id": ""
 }
 ```
+
+`autostart_app_id` 可填写 `~/.whisplay-daemon/app/` 中已注册 app 的 `app_id`，daemon
+每次启动时会自动启动该 app；保持为空字符串或省略该字段则停留在 daemon 桌面。
+
+Whisplay Joy 请把 `model` 设为 `whisplay-joy`。五轴按键映射为：S1/上
+（物理 pin 32，BCM12）、S2/右（pin 33，BCM13）、S4/下（pin 31，BCM6）、
+S3/左（pin 29，BCM5）、CENTER（pin 37，BCM26）。daemon 中上/下用于菜单
+滚动，右键或 CENTER 确认，左键返回；原 Whisplay 按钮也可单击确认。外部 app
+获得前台后 daemon 会忽略五轴输入，返回 daemon 后自动恢复。
 
 `pisugar_home_button` 用于控制 PiSugar 的哪个按键事件会触发“从前台 app 返回 daemon 首页”。支持 `single`、`double`、`long`、`none`，默认值为 `single`。检测到 PiSugar3（I²C bus 1、地址 `0x57`）时，daemon 会直接读取 `0x02` 寄存器的电源键状态，以电源键单击返回首页，不再占用 PiSugar 自定义按钮的单击事件；设为 `none` 仍可关闭此功能。
 
@@ -139,10 +150,10 @@ tail -f ~/.whisplay-daemon/daemon-app.log
   * **功能**: 可选的本地硬件守护进程，独占 LCD、背光、RGB LED、按键和 app 生命周期，并通过本机 Unix Socket 暴露 app 注册、切换和共享 framebuffer 接口。
   * **协议**: 按行分隔的 JSON，固定 `version: 1`
   * **默认 Socket 路径**: `/tmp/whisplay-daemon.sock`
-  * **支持命令**: `health.ping`、`app.register`、`app.list`、`app.launch`、`app.focus.acquire`、`app.focus.release`、`app.exit.request`、`framebuffer.acquire`、`backlight.set`、`led.set`、`led.fade`、`button.get_state`、`events.subscribe`
+  * **支持命令**: `health.ping`、`app.register`、`app.list`、`app.launch`、`app.autostart.set`、`app.focus.acquire`、`app.focus.release`、`app.exit.request`、`framebuffer.acquire`、`backlight.set`、`led.set`、`led.fade`、`button.get_state`、`events.subscribe`
   * **桌面交互**: 单击切换 app、长按启动/切到前台，前台 app 内快速按 4 下请求退出并回到桌面
   * **内建系统页**: 默认包含 `Bluetooth`、`WiFi`、`Volume` 和 `Power` 四个入口，均由 daemon 自身渲染，无需外部 app 进程
-  * **WiFi 输入方式**: 选择加密网络后会进入单按键密码页；密码输入依赖外接键盘（方向键/回车/退格/ESC）
+  * **WiFi 输入方式**: Whisplay Joy 选择加密网络后会显示微型 QWERTY 屏幕键盘。S1/S2/S4/S3 分别向上/右/下/左移动，CENTER 或短按原 Whisplay 按钮选择高亮按键；`ABC` 切换大小写及数字符号，`DEL` 删除，`SPACE` 输入空格，`JOIN` 发起连接。按住原 Whisplay 按钮达到长按阈值时会立即退出键盘并闪烁红灯，无需等待松开。原版 Whisplay 仍支持外接键盘（回车/退格/ESC）。
   * **PiSugar 返回集成**: daemon 会先通过 I²C 检测 PiSugar3；检测成功时直接使用电源键单击作为“返回首页”，并释放 PiSugar 自定义按钮单击事件。其他型号仍通过 `pisugar-server`，根据 `~/.whisplay-daemon/settings.json` 中的 `pisugar_home_button` 绑定 `single`、`double` 或 `long`；设为 `none` 可关闭此功能
   * **安装为服务**:
     ```shell

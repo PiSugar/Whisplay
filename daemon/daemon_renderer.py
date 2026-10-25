@@ -61,15 +61,18 @@ def _draw_rounded_rectangle(
 
 
 class DesktopRenderer:
-    def __init__(self, board, script_dir: str):
+    def __init__(self, board, script_dir: str, joy_mode: bool = False):
         self.board = board
         self.script_dir = script_dir
+        self.joy_mode = joy_mode
         self.title_font = self._load_font(TITLE_FONT_SIZE)
         self.body_font = self._load_font(16)
         self.small_font = self._load_font(14)
+        self.micro_font = self._load_font(9)
         self.battery_font = self._load_font(13)
         self.icon_dir = os.path.join(script_dir, "img")
         self._icon_cache: dict[tuple[str, int], Image.Image | None] = {}
+        self._joy_arrow_cache: dict[tuple[str, tuple[int, ...]], Image.Image] = {}
         self.zoom_sizes = {
             -2: self._load_font(12),
             -1: self._load_font(14),
@@ -211,6 +214,109 @@ class DesktopRenderer:
         _draw_rounded_rectangle(draw, bounds, radius=height // 2, fill=fill)
         return width
 
+    def _joy_arrow_icon(self, direction: str, color) -> Image.Image:
+        """Render a thin, pixel-centered arrow with antialiased round ends."""
+        rgba = tuple(color) if len(color) == 4 else (*color, 255)
+        cache_key = (direction, rgba)
+        cached = self._joy_arrow_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        # Derive the left arrow from the final right arrow so their geometry is
+        # an exact mirror, including antialiasing at the rounded endpoints.
+        if direction == "left":
+            icon = self._joy_arrow_icon("right", rgba).transpose(
+                Image.Transpose.FLIP_LEFT_RIGHT
+            )
+            self._joy_arrow_cache[cache_key] = icon
+            return icon
+
+        scale = 4
+        icon_size = 16
+        stroke_width = 6  # 1.5 px after downsampling.
+        mask = Image.new("L", (icon_size * scale, icon_size * scale), 0)
+        icon_draw = ImageDraw.Draw(mask)
+
+        # Map logical pixel centers into the supersampled image.  In particular,
+        # 7.5 maps to 31.5, the exact center of the even-sized 64 px canvas.
+        def point(px: float, py: float) -> tuple[float, float]:
+            return (px * scale + 1.5, py * scale + 1.5)
+
+        def segment(start, end):
+            start = point(*start)
+            end = point(*end)
+            icon_draw.line((start, end), fill=255, width=stroke_width)
+            radius = stroke_width / 2
+            for center_x, center_y in (start, end):
+                icon_draw.ellipse(
+                    (
+                        center_x - radius,
+                        center_y - radius,
+                        center_x + radius,
+                        center_y + radius,
+                    ),
+                    fill=255,
+                )
+
+        if direction == "vertical":
+            segment((7.5, 1.5), (7.5, 13.5))
+            segment((7.5, 1.5), (3.5, 5.5))
+            segment((7.5, 1.5), (11.5, 5.5))
+            segment((7.5, 13.5), (3.5, 9.5))
+            segment((7.5, 13.5), (11.5, 9.5))
+        else:
+            is_right = direction == "right"
+            tip_x = 13.5 if is_right else 1.5
+            tail_x = 1.5 if is_right else 13.5
+            shoulder_x = 9.5 if is_right else 5.5
+            segment((tail_x, 7.5), (tip_x, 7.5))
+            segment((tip_x, 7.5), (shoulder_x, 3.5))
+            segment((tip_x, 7.5), (shoulder_x, 11.5))
+
+        mask = mask.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
+
+        # Pillow rasterizes even-width lines with a small directional bias.
+        # Unioning each mask with its mirror makes the visible axes land on the
+        # mathematical center of the even-sized icon.
+        def symmetric_union(source: Image.Image, transpose) -> Image.Image:
+            mirrored = source.transpose(transpose)
+            return Image.frombytes(
+                "L",
+                source.size,
+                bytes(max(a, b) for a, b in zip(source.tobytes(), mirrored.tobytes())),
+            )
+
+        mask = symmetric_union(mask, Image.Transpose.FLIP_TOP_BOTTOM)
+        if direction == "vertical":
+            mask = symmetric_union(mask, Image.Transpose.FLIP_LEFT_RIGHT)
+
+        if rgba[3] != 255:
+            mask = mask.point(lambda value: value * rgba[3] // 255)
+        icon = Image.new("RGBA", (icon_size, icon_size), rgba[:3] + (0,))
+        icon.putalpha(mask)
+        self._joy_arrow_cache[cache_key] = icon
+        return icon
+
+    def _draw_joy_arrow(self, draw, x: int, y: int, direction: str, color) -> int:
+        """Draw one consistently weighted, round-ended Joy navigation icon."""
+        icon = self._joy_arrow_icon(direction, color)
+        draw._image.paste(icon, (x, y), icon)
+        return 15
+
+    def _draw_joy_legend(self, draw, x: int, y: int, color):
+        cursor_x = x
+        label_gap = 3
+        group_gap = 9
+        for direction, label in (
+            ("vertical", "scroll"),
+            ("right", "select"),
+            ("left", "back"),
+        ):
+            cursor_x += self._draw_joy_arrow(draw, cursor_x, y + 1, direction, color)
+            cursor_x += label_gap
+            draw.text((cursor_x, y), label, fill=color, font=self.small_font)
+            cursor_x += self.small_font.getbbox(label)[2] + group_gap
+
     def _draw_desktop_legend(self, draw: ImageDraw.ImageDraw, x: int, y: int):
         legend_color = (60, 90, 100)
         label_gap = 4
@@ -220,6 +326,9 @@ class DesktopRenderer:
         pill_h = 8
 
         cursor_x = x
+        if self.joy_mode:
+            self._draw_joy_legend(draw, cursor_x, y, legend_color)
+            return
         cursor_x += self._draw_legend_pill(draw, cursor_x, y + 4, dot_size, dot_size, legend_color)
         cursor_x += label_gap
         draw.text((cursor_x, y), "next", fill=legend_color, font=self.small_font)
@@ -329,6 +438,9 @@ class DesktopRenderer:
         pill_h = 8
 
         cursor_x = x
+        if self.joy_mode:
+            self._draw_joy_legend(draw, cursor_x, y, legend_color)
+            return
         cursor_x += self._draw_legend_pill(draw, cursor_x, y + 4, dot_size, dot_size, legend_color)
         cursor_x += label_gap
         draw.text((cursor_x, y), "next", fill=legend_color, font=self.small_font)
@@ -347,6 +459,10 @@ class DesktopRenderer:
         items = list(view_model.get("items") or [])
         selected_index = int(view_model.get("selected_index") or 0)
         status = str(view_model.get("status") or "")
+        if self.joy_mode:
+            status = status.replace("Long press", "Press button").replace(
+                "long press", "press button"
+            )
         busy = bool(view_model.get("busy"))
         detail_lines = list(view_model.get("detail_lines") or [])
 
@@ -371,6 +487,10 @@ class DesktopRenderer:
                 item = items[idx]
                 item_title = str(item.get("title") or "")
                 item_meta = str(item.get("meta") or "")
+                if self.joy_mode:
+                    item_meta = item_meta.replace("Long press", "Press button").replace(
+                        "long press", "press button"
+                    )
                 if idx == selected_index:
                     color = (255, 255, 255)
                     meta_color = (130, 224, 170)
@@ -408,6 +528,10 @@ class DesktopRenderer:
         self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
 
     def _render_keyboard(self, view_model: dict):
+        if self.joy_mode and view_model.get("screen_keyboard"):
+            self._render_screen_keyboard(view_model)
+            return
+
         image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (11, 16, 26))
         draw = ImageDraw.Draw(image)
 
@@ -435,6 +559,108 @@ class DesktopRenderer:
         _draw_rounded_rectangle(draw, (10, 208, SCREEN_WIDTH - 10, 250), radius=10, fill=(18, 30, 44))
         draw.text((left, 216), status[:30], fill=(156, 214, 255), font=self.small_font)
         draw.text((left, 258), "Backspace delete", fill=(90, 106, 124), font=self.small_font)
+
+        frame = image_to_rgb565_bytes(image)
+        self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
+
+    def _render_screen_keyboard(self, view_model: dict):
+        image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (9, 14, 24))
+        draw = ImageDraw.Draw(image)
+
+        title = str(view_model.get("title") or "WiFi Password")
+        subtitle = str(view_model.get("subtitle") or "Protected network")
+        password = str(view_model.get("password") or "")
+        password_length = int(view_model.get("password_length") or 0)
+        selected_key = str(view_model.get("selected_key") or "")
+        shifted = bool(view_model.get("shifted"))
+        rows = list(view_model.get("keyboard_rows") or [])
+
+        draw.text((10, 4), title, fill=(255, 255, 255), font=self.title_font)
+        draw.text((10, 25), subtitle[:25], fill=(126, 174, 220), font=self.small_font)
+
+        draw.rounded_rectangle((8, 45, 232, 78), radius=8, fill=(18, 29, 43))
+        display_password = password[-14:] if password else "<empty>"
+        draw.text((14, 53), display_password, fill=(120, 255, 140), font=self.body_font)
+
+        preview_box = (190, 42, 232, 81)
+        draw.rounded_rectangle(
+            preview_box,
+            radius=8,
+            fill=(40, 126, 190),
+            outline=(156, 228, 255),
+            width=2,
+        )
+        preview_font = self.body_font if len(selected_key) <= 2 else self.micro_font
+        preview_bbox = draw.textbbox((0, 0), selected_key, font=preview_font)
+        preview_width = preview_bbox[2] - preview_bbox[0]
+        preview_height = preview_bbox[3] - preview_bbox[1]
+        draw.text(
+            (
+                preview_box[0] + (preview_box[2] - preview_box[0] - preview_width) / 2,
+                preview_box[1] + (preview_box[3] - preview_box[1] - preview_height) / 2 - preview_bbox[1],
+            ),
+            selected_key,
+            fill=(255, 255, 255),
+            font=preview_font,
+        )
+
+        keyboard_x = 8
+        keyboard_y = 88
+        unit_width = 16
+        row_height = 22
+        row_gap = 3
+        max_units = 14.0
+        for row_index, row in enumerate(rows):
+            total_units = sum(float(key.get("width") or 1.0) for key in row)
+            cursor_x = keyboard_x + (max_units - total_units) * unit_width / 2
+            y = keyboard_y + row_index * (row_height + row_gap)
+            for key in row:
+                key_units = float(key.get("width") or 1.0)
+                key_width = key_units * unit_width - 2
+                selected = bool(key.get("selected"))
+                fill = (44, 150, 214) if selected else (23, 38, 54)
+                outline = (190, 240, 255) if selected else (54, 76, 96)
+                draw.rounded_rectangle(
+                    (cursor_x, y, cursor_x + key_width, y + row_height),
+                    radius=4,
+                    fill=fill,
+                    outline=outline,
+                    width=1,
+                )
+                label = str(key.get("label") or "")
+                bbox = draw.textbbox((0, 0), label, font=self.micro_font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                draw.text(
+                    (
+                        cursor_x + (key_width - text_width) / 2,
+                        y + (row_height - text_height) / 2 - bbox[1],
+                    ),
+                    label,
+                    fill=(255, 255, 255) if selected else (164, 184, 202),
+                    font=self.micro_font,
+                )
+                cursor_x += key_units * unit_width
+
+        mode_label = "ABC" if shifted else "abc"
+        draw.text(
+            (10, 218),
+            f"{password_length} chars  |  {mode_label}",
+            fill=(255, 214, 94),
+            font=self.small_font,
+        )
+        draw.text(
+            (10, 240),
+            "S1-S4 move   CENTER select",
+            fill=(132, 174, 206),
+            font=self.micro_font,
+        )
+        draw.text(
+            (10, 256),
+            "Hold Whisplay button: back",
+            fill=(92, 118, 142),
+            font=self.micro_font,
+        )
 
         frame = image_to_rgb565_bytes(image)
         self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)

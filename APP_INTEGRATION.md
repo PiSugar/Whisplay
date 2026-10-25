@@ -122,6 +122,17 @@ Returns registered apps, running status, selected state, and foreground state.
 
 Asks the daemon to launch an app by `app_id`.
 
+### `app.autostart.set`
+
+Sets the app that the daemon launches automatically each time it starts. The app
+must already be registered. Pass an empty `app_id` to disable autostart.
+
+```json
+{
+  "app_id": "my-app"
+}
+```
+
 ### `app.focus.acquire`
 
 Foreground entry point for the running app.

@@ -91,7 +91,9 @@ install -d -m 0755 "$APPS_DIR"
 
 cat > "$SETTINGS_PATH" <<EOF
 {
-  "apps_dir": "$APPS_DIR"
+  "apps_dir": "$APPS_DIR",
+  "model": "whisplay",
+  "autostart_app_id": ""
 }
 EOF
 
