@@ -83,8 +83,11 @@ class InternalAppManager:
         with self._lock:
             self._exit_requested = False
 
-    def text_input_active(self) -> bool:
-        return self.wifi.text_input_active()
+    def text_input_active(self, app_id: str | None) -> bool:
+        app = self._apps.get(app_id)
+        if app is None or not hasattr(app, "text_input_active"):
+            return False
+        return bool(app.text_input_active())
 
     def consume_dirty(self) -> bool:
         with self._lock:

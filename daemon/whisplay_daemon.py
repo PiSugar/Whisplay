@@ -119,7 +119,9 @@ class WhisplayDaemon:
         with self.state_lock:
             if self._screen_locked:
                 return
-            if self.foreground_app_id and self.internal_apps.text_input_active():
+            if self.foreground_app_id and self.internal_apps.text_input_active(
+                self.foreground_app_id
+            ):
                 self.internal_apps.handle_keyboard_action(self.foreground_app_id, action)
                 if self.internal_apps.consume_dirty():
                     self._render_internal_app()
@@ -171,7 +173,9 @@ class WhisplayDaemon:
                     app_id=self.foreground_app_id,
                 )
                 return
-            if self.foreground_app_id and self.internal_apps.text_input_active():
+            if self.foreground_app_id and self.internal_apps.text_input_active(
+                self.foreground_app_id
+            ):
                 keyboard_action = {
                     "up": "keyboard_up",
                     "right": "keyboard_right",
@@ -670,7 +674,9 @@ class WhisplayDaemon:
                     if self.joy_mode:
                         if keyboard_hold_cancel_fired:
                             pass
-                        elif self.internal_apps.text_input_active():
+                        elif self.internal_apps.text_input_active(
+                            self.foreground_app_id
+                        ):
                             action = (
                                 "keyboard_cancel"
                                 if press_duration >= BUTTON_LONG_PRESS_SEC
@@ -726,7 +732,6 @@ class WhisplayDaemon:
         if not self.board.button_pressed():
             self._button_press_started_at = 0.0
             self._foreground_long_press_fired = False
-            self._keyboard_hold_cancel_fired = False
             if not self.foreground_app_id or self.internal_apps.is_internal_app(
                 self.foreground_app_id
             ):
@@ -737,7 +742,7 @@ class WhisplayDaemon:
             self.joy_mode
             and self.foreground_app_id
             and self.internal_apps.is_internal_app(self.foreground_app_id)
-            and self.internal_apps.text_input_active()
+            and self.internal_apps.text_input_active(self.foreground_app_id)
         )
         if joy_keyboard_active and not self._keyboard_hold_cancel_fired:
             self.internal_apps.handle_keyboard_action(

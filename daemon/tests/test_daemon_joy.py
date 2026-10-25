@@ -197,7 +197,7 @@ class JoyInteractionTests(unittest.TestCase):
         daemon.foreground_app_id = "whisplay-wifi"
         daemon.internal_apps = SimpleNamespace(
             is_internal_app=lambda _app_id: True,
-            text_input_active=lambda: True,
+            text_input_active=lambda _app_id: True,
         )
         for direction in ("up", "right", "down", "left", "center"):
             daemon._on_joystick_pressed(direction)
@@ -228,15 +228,16 @@ class JoyInteractionTests(unittest.TestCase):
 
         daemon.internal_apps = SimpleNamespace(
             is_internal_app=lambda _app_id: True,
-            text_input_active=lambda: text_input_active[0],
+            text_input_active=lambda _app_id: text_input_active[0],
             handle_keyboard_action=handle_keyboard_action,
             exit_requested=False,
             consume_dirty=lambda: True,
         )
         rgb = []
+        button_pressed = [True]
         daemon.board = SimpleNamespace(
             set_rgb=lambda *color: rgb.append(color),
-            button_pressed=lambda: True,
+            button_pressed=lambda: button_pressed[0],
         )
         daemon.pisugar = SimpleNamespace(poll_home_trigger=lambda: False)
         daemon._recent_release_times = []
@@ -253,6 +254,11 @@ class JoyInteractionTests(unittest.TestCase):
         self.assertEqual(handled, ["keyboard_select", "keyboard_cancel"])
         self.assertEqual(rgb[-1], (255, 0, 0))
 
+        # The polling loop may observe GPIO release before the release callback.
+        # It must leave the suppression flag for that callback to consume.
+        button_pressed[0] = False
+        daemon._process_button_hold(now=2.1)
+
         # Releasing after the hold action must not select a list item.
         daemon._on_button_released()
         self.assertEqual(handled, ["keyboard_select", "keyboard_cancel"])
@@ -262,7 +268,7 @@ class JoyInteractionTests(unittest.TestCase):
         daemon.foreground_app_id = "internal-app"
         daemon.internal_apps = SimpleNamespace(
             is_internal_app=lambda _app_id: True,
-            text_input_active=lambda: False,
+            text_input_active=lambda _app_id: False,
         )
         app = SimpleNamespace(app_id="internal-app")
         daemon.apps = {app.app_id: app}

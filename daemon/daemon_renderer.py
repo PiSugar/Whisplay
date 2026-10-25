@@ -21,6 +21,46 @@ WIFI_LEVEL_ICON_FILES = {
 }
 
 
+def _changed_pixel_bounds(
+    previous: bytes,
+    current: bytes,
+    width: int,
+    height: int,
+) -> tuple[int, int, int, int] | None:
+    """Return the smallest box containing changed packed RGB pixels."""
+    pixel_count = width * height
+    if pixel_count <= 0 or len(previous) != len(current):
+        return (0, 0, width, height)
+    bytes_per_pixel, remainder = divmod(len(current), pixel_count)
+    if remainder or bytes_per_pixel <= 0:
+        return (0, 0, width, height)
+
+    previous_view = memoryview(previous)
+    current_view = memoryview(current)
+    row_stride = width * bytes_per_pixel
+    left = width
+    top = height
+    right = 0
+    bottom = 0
+    for y in range(height):
+        row_start = y * row_stride
+        row_end = row_start + row_stride
+        if previous_view[row_start:row_end] == current_view[row_start:row_end]:
+            continue
+        top = min(top, y)
+        bottom = y + 1
+        for x in range(width):
+            pixel_start = row_start + x * bytes_per_pixel
+            pixel_end = pixel_start + bytes_per_pixel
+            if previous_view[pixel_start:pixel_end] != current_view[pixel_start:pixel_end]:
+                left = min(left, x)
+                right = max(right, x + 1)
+
+    if right == 0:
+        return None
+    return (left, top, right, bottom)
+
+
 def _draw_rounded_rectangle(
     draw: ImageDraw.ImageDraw,
     bounds,
@@ -73,6 +113,7 @@ class DesktopRenderer:
         self.icon_dir = os.path.join(script_dir, "img")
         self._icon_cache: dict[tuple[str, int], Image.Image | None] = {}
         self._joy_arrow_cache: dict[tuple[str, tuple[int, ...]], Image.Image] = {}
+        self._last_screen_keyboard_image: Image.Image | None = None
         self.zoom_sizes = {
             -2: self._load_font(12),
             -1: self._load_font(14),
@@ -80,6 +121,39 @@ class DesktopRenderer:
             1: self._load_font(14),
             2: self._load_font(12),
         }
+
+    def _draw_full_screen_image(self, image: Image.Image):
+        """Draw a complete frame and invalidate any partial-update baseline."""
+        frame = image_to_rgb565_bytes(image)
+        self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
+        self._last_screen_keyboard_image = None
+
+    def _draw_screen_keyboard_image(self, image: Image.Image):
+        """Only update keyboard pixels that changed since the previous frame."""
+        previous = self._last_screen_keyboard_image
+        if previous is None or previous.mode != image.mode or previous.size != image.size:
+            frame = image_to_rgb565_bytes(image)
+            self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
+        else:
+            changed_bounds = _changed_pixel_bounds(
+                previous.tobytes(),
+                image.tobytes(),
+                image.width,
+                image.height,
+            )
+            if changed_bounds is None:
+                return
+            left, top, right, bottom = changed_bounds
+            changed_image = image.crop(changed_bounds)
+            frame = image_to_rgb565_bytes(changed_image)
+            self.board.draw_image(
+                left,
+                top,
+                right - left,
+                bottom - top,
+                frame,
+            )
+        self._last_screen_keyboard_image = image.copy()
 
     def _load_font(self, size: int):
         candidates = [
@@ -366,8 +440,7 @@ class DesktopRenderer:
 
         if not apps:
             draw.text((left, top_margin + 48), "No apps registered", fill=(255, 200, 120), font=self.body_font)
-            frame = image_to_rgb565_bytes(image)
-            self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
+            self._draw_full_screen_image(image)
             return
 
         selected = apps[selected_index % len(apps)]
@@ -419,8 +492,7 @@ class DesktopRenderer:
             spinner = spinner_frames[int(time.time() * 8) % len(spinner_frames)]
             draw.text((modal_x + modal_w - 22, modal_y + 12), spinner, fill=(120, 220, 255), font=self.body_font)
 
-        frame = image_to_rgb565_bytes(image)
-        self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
+        self._draw_full_screen_image(image)
 
     def render_internal_app(self, view_model: dict):
         kind = view_model.get("kind")
@@ -524,8 +596,7 @@ class DesktopRenderer:
                 draw.text((left, status_y + 30), detail_lines[1][:30], fill=(190, 220, 255), font=self.small_font)
         else:
             draw.text((left, status_y + 20), status[:30], fill=status_fill, font=self.small_font)
-        frame = image_to_rgb565_bytes(image)
-        self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
+        self._draw_full_screen_image(image)
 
     def _render_keyboard(self, view_model: dict):
         if self.joy_mode and view_model.get("screen_keyboard"):
@@ -560,8 +631,7 @@ class DesktopRenderer:
         draw.text((left, 216), status[:30], fill=(156, 214, 255), font=self.small_font)
         draw.text((left, 258), "Backspace delete", fill=(90, 106, 124), font=self.small_font)
 
-        frame = image_to_rgb565_bytes(image)
-        self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
+        self._draw_full_screen_image(image)
 
     def _render_screen_keyboard(self, view_model: dict):
         image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (9, 14, 24))
@@ -662,5 +732,4 @@ class DesktopRenderer:
             font=self.micro_font,
         )
 
-        frame = image_to_rgb565_bytes(image)
-        self.board.draw_image(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, frame)
+        self._draw_screen_keyboard_image(image)

@@ -10,7 +10,9 @@ DAEMON_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if DAEMON_DIR not in sys.path:
     sys.path.insert(0, DAEMON_DIR)
 
-from internal_apps.wifi_app import SCREEN_KEYBOARD_ROWS, WifiInternalApp
+from internal_apps.manager import InternalAppManager
+from internal_apps.volume_app import VOLUME_APP_ID
+from internal_apps.wifi_app import SCREEN_KEYBOARD_ROWS, WIFI_APP_ID, WifiInternalApp
 
 
 class WifiScreenKeyboardTests(unittest.TestCase):
@@ -92,6 +94,16 @@ class WifiScreenKeyboardTests(unittest.TestCase):
         app.state.keyboard_row = 4
         app.state.keyboard_col = 0
         self.assertEqual(app.view_model()["selected_key"], "SPACE")
+
+    def test_only_foreground_app_keyboard_state_controls_input_routing(self):
+        manager = InternalAppManager()
+        manager.wifi.state.mode = "input"
+
+        self.assertTrue(manager.text_input_active(WIFI_APP_ID))
+        self.assertFalse(manager.text_input_active(VOLUME_APP_ID))
+
+        manager.wifi.state.mode = "list"
+        self.assertFalse(manager.text_input_active(WIFI_APP_ID))
 
 
 if __name__ == "__main__":

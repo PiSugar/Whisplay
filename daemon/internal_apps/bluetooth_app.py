@@ -75,9 +75,9 @@ class BluetoothInternalApp:
                 self.state.selected_index = (self.state.selected_index + 1) % total
                 self._mark_dirty()
                 return
-            if self.state.busy:
-                return
             selected_index = self.state.selected_index
+            if selected_index != 0 and self.state.busy:
+                return
         if selected_index == 0:
             self._request_exit()
             return
