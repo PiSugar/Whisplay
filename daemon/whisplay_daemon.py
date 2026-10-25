@@ -221,6 +221,21 @@ class WhisplayDaemon:
         except Exception:
             return 0
 
+    def _normalize_supported_models(self, value) -> tuple[str, ...]:
+        if not isinstance(value, (list, tuple)):
+            return ()
+        return tuple(
+            dict.fromkeys(
+                model
+                for model in (str(item).strip().lower() for item in value)
+                if model
+            )
+        )
+
+    def _is_app_supported(self, app: AppRecord) -> bool:
+        supported_models = getattr(app, "supported_models", ())
+        return not supported_models or self.model in supported_models
+
     def _normalize_exit_gesture(self, value) -> str:
         text = str(value or EXIT_GESTURE_QUAD_CLICK).strip().lower()
         if text not in VALID_EXIT_GESTURES:
@@ -253,6 +268,7 @@ class WhisplayDaemon:
             "use_daemon_default_log": app.use_daemon_default_log,
             "persist": app.persist,
             "disable_esc_exit_key": app.disable_esc_exit_key,
+            "supported_models": list(app.supported_models),
         }
 
     def _load_apps(self):
@@ -288,6 +304,9 @@ class WhisplayDaemon:
                 use_daemon_default_log=bool(item.get("use_daemon_default_log", False)),
                 persist=bool(item.get("persist", False)),
                 disable_esc_exit_key=bool(item.get("disable_esc_exit_key", False)),
+                supported_models=self._normalize_supported_models(
+                    item.get("supported_models")
+                ),
             )
 
     def _register_internal_apps(self):
@@ -311,7 +330,7 @@ class WhisplayDaemon:
 
     def _app_list(self) -> list[AppRecord]:
         return sorted(
-            self.apps.values(),
+            (app for app in self.apps.values() if self._is_app_supported(app)),
             key=lambda app: (-app.priority, app.display_name.lower(), app.app_id),
         )
 
@@ -327,9 +346,10 @@ class WhisplayDaemon:
             return
         with self.state_lock:
             app = self.apps.get(self.autostart_app_id)
-            if app is None:
+            if app is None or not self._is_app_supported(app):
                 print(
-                    f"[WhisplayDaemon] Autostart app not found: {self.autostart_app_id}"
+                    f"[WhisplayDaemon] Autostart app unavailable for {self.model}: "
+                    f"{self.autostart_app_id}"
                 )
                 return
             apps = self._app_list()
@@ -899,6 +919,10 @@ class WhisplayDaemon:
             record.persist = bool(payload.get("persist"))
         if payload.get("disable_esc_exit_key") is not None:
             record.disable_esc_exit_key = bool(payload.get("disable_esc_exit_key"))
+        if payload.get("supported_models") is not None:
+            record.supported_models = self._normalize_supported_models(
+                payload.get("supported_models")
+            )
         self._save_app(record)
         self._render_desktop()
         return {
@@ -909,6 +933,7 @@ class WhisplayDaemon:
             "priority": record.priority,
             "use_daemon_default_log": record.use_daemon_default_log,
             "disable_esc_exit_key": record.disable_esc_exit_key,
+            "supported_models": list(record.supported_models),
             "running": record.is_running(),
         }
 
@@ -923,6 +948,7 @@ class WhisplayDaemon:
                 "priority": app.priority,
                 "use_daemon_default_log": app.use_daemon_default_log,
                 "disable_esc_exit_key": app.disable_esc_exit_key,
+                "supported_models": list(app.supported_models),
                 "running": app.is_running(),
                 "selected": selected is not None and selected.app_id == app.app_id,
                 "foreground": self.foreground_app_id == app.app_id,
@@ -996,8 +1022,12 @@ class WhisplayDaemon:
 
             if cmd == "app.autostart.set":
                 app_id = str(payload.get("app_id") or "").strip()
-                if app_id and app_id not in self.apps:
-                    raise RuntimeError(f"unknown app: {app_id}")
+                if app_id:
+                    app = self.apps.get(app_id)
+                    if app is None:
+                        raise RuntimeError(f"unknown app: {app_id}")
+                    if not self._is_app_supported(app):
+                        raise RuntimeError(f"app is unavailable for {self.model}: {app_id}")
                 settings = load_json_file(self.settings_path)
                 settings["autostart_app_id"] = app_id
                 write_json_file(self.settings_path, settings)
@@ -1012,6 +1042,8 @@ class WhisplayDaemon:
                 app = self.apps.get(app_id)
                 if app is None:
                     raise RuntimeError(f"unknown app: {app_id}")
+                if not self._is_app_supported(app):
+                    raise RuntimeError(f"app is unavailable for {self.model}: {app_id}")
                 if self.foreground_app_id and self.foreground_app_id != app_id:
                     raise RuntimeError("cannot launch while another app is foreground")
                 self._launch_app(app)
@@ -1022,6 +1054,8 @@ class WhisplayDaemon:
                 app = self.apps.get(app_id)
                 if app is None:
                     raise RuntimeError(f"unknown app: {app_id}")
+                if not self._is_app_supported(app):
+                    raise RuntimeError(f"app is unavailable for {self.model}: {app_id}")
                 if self.pending_launch_app_id and self.pending_launch_app_id != app_id and self.foreground_app_id != app_id:
                     raise RuntimeError("another app is pending foreground")
                 self._grant_focus(app)

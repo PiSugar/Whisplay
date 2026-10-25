@@ -1,0 +1,18 @@
+{
+  "app_id": "whisplay-pacman",
+  "display_name": "Pac-Man",
+  "icon": "PM",
+  "launch_command": "python3 pacman.py",
+  "cwd": "__EXAMPLE_DIR__",
+  "env": {
+    "WHISPLAY_APP_ID": "whisplay-pacman",
+    "SDL_AUDIODRIVER": "alsa",
+    "AUDIODEV": "whisplaysound"
+  },
+  "exit_gesture": "long_press",
+  "priority": 29,
+  "use_daemon_default_log": true,
+  "supported_models": [
+    "whisplay-joy"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "app_id": "whisplay-tank-battle",
+  "display_name": "Tank Battle",
+  "icon": "TB",
+  "launch_command": "python3 tank_battle.py",
+  "cwd": "__EXAMPLE_DIR__",
+  "env": {
+    "WHISPLAY_APP_ID": "whisplay-tank-battle",
+    "SDL_AUDIODRIVER": "alsa",
+    "AUDIODEV": "whisplaysound"
+  },
+  "exit_gesture": "long_press",
+  "priority": 30,
+  "use_daemon_default_log": true,
+  "supported_models": [
+    "whisplay-joy"
+  ]
+}

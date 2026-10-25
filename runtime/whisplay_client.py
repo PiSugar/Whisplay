@@ -43,6 +43,7 @@ class WhisplayDaemonProxy:
         exit_gesture: str = DEFAULT_EXIT_GESTURE,
         priority: int = DEFAULT_PRIORITY,
         use_daemon_default_log: bool = DEFAULT_USE_DAEMON_DEFAULT_LOG,
+        supported_models: list[str] | tuple[str, ...] | None = None,
     ):
         self.socket_path = socket_path
         self.button_press_callback = None
@@ -74,6 +75,7 @@ class WhisplayDaemonProxy:
         self._exit_gesture = str(exit_gesture or DEFAULT_EXIT_GESTURE)
         self._priority = int(priority)
         self._use_daemon_default_log = bool(use_daemon_default_log)
+        self._supported_models = tuple(supported_models or ())
 
     def _send_request(self, cmd: str, payload: dict | None = None) -> dict:
         body = {"version": 1, "cmd": cmd, "payload": payload or {}}
@@ -153,6 +155,8 @@ class WhisplayDaemonProxy:
         payload["exit_gesture"] = self._exit_gesture
         payload["priority"] = self._priority
         payload["use_daemon_default_log"] = self._use_daemon_default_log
+        if self._supported_models:
+            payload["supported_models"] = list(self._supported_models)
         self._send_request("app.register", payload)
 
     def acquire_foreground(self, timeout_sec: float = 5.0):
@@ -334,6 +338,7 @@ def create_whisplay_hardware(
     exit_gesture: str = DEFAULT_EXIT_GESTURE,
     priority: int = DEFAULT_PRIORITY,
     use_daemon_default_log: bool = DEFAULT_USE_DAEMON_DEFAULT_LOG,
+    supported_models: list[str] | tuple[str, ...] | None = None,
 ):
     daemon = WhisplayDaemonProxy(
         socket_path=DEFAULT_DAEMON_SOCKET_PATH,
@@ -346,6 +351,7 @@ def create_whisplay_hardware(
         exit_gesture=exit_gesture,
         priority=priority,
         use_daemon_default_log=use_daemon_default_log,
+        supported_models=supported_models,
     )
     if daemon.ping():
         daemon.register()

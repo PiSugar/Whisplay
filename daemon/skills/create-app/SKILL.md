@@ -100,6 +100,7 @@ Place in `~/.whisplay-daemon/app/<app-id>.json`:
   "exit_gesture": "quad_click",
   "priority": 10,
   "use_daemon_default_log": true,
+  "supported_models": ["whisplay-joy"],
   "persist": true
 }
 ```
@@ -121,6 +122,7 @@ Or use `persist=True` in `create_whisplay_hardware()` to auto-register on first 
 | `use_daemon_default_log` | bool | Redirect stdout to daemon log |
 | `persist` | bool | Save config to disk |
 | `disable_esc_exit_key` | bool | Prevent ESC key from triggering exit |
+| `supported_models` | string[] | Optional hardware-model allowlist controlling desktop visibility and launch |
 
 ## `create_whisplay_hardware()` API
 

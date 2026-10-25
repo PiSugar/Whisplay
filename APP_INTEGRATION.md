@@ -165,6 +165,7 @@ Payload:
   "exit_gesture": "quad_click",
   "priority": 50,
   "use_daemon_default_log": true,
+  "supported_models": ["whisplay-joy"],
   "persist": true,
   "disable_esc_exit_key": false
 }
@@ -181,6 +182,7 @@ Notes:
 - `priority` is optional. Higher values appear earlier on the desktop. Default is `0`.
 - `use_daemon_default_log` is optional. When `true`, the app's stdout/stderr are appended to `~/.whisplay-daemon/daemon-app.log`.
 - `disable_esc_exit_key` is optional. Default is `false`. When set to `true`, pressing external keyboard `Esc` in foreground will not trigger return-to-home for that app.
+- `supported_models` is optional. When present, the app is only listed and launchable on those hardware models (for example `["whisplay-joy"]`).
 - The daemon does not inject built-in apps at runtime. The install script seeds the default example app JSON files into `~/.whisplay-daemon/app/`.
 
 ### `app.list`

@@ -225,7 +225,7 @@ The repo root is organized by responsibility:
 
 ## Example Programs
 
-The `example` directory contains 4 end-user demo programs. If you are using whisplay-daemon, you can see their entries directly on the daemon desktop; if not using the daemon, you can run these scripts directly to test hardware functions and experience the demo applications.
+The `example` directory contains 6 end-user demo programs. If you are using whisplay-daemon, you can see their entries directly on the daemon desktop; if not using the daemon, you can run these scripts directly to test hardware functions and experience the demo applications.
 
 #### `run_test.sh`
 
@@ -276,6 +276,26 @@ The `example` directory contains 4 end-user demo programs. If you are using whis
     sudo python3 jump_game.py
     ```
     **Effect**: Hold to charge and release to jump. The demo is tuned for Pi Zero 2W class performance and uses on-screen prompts plus game audio.
+
+#### `tank_battle.py`
+
+  * **Function**: Whisplay Joy-only tank battle game with a clockwise-rotated landscape, sound effects, destructible brick walls, hedges, and rivers.
+  * **Usage**:
+    ```shell
+    cd example
+    sudo python3 tank_battle.py
+    ```
+    **Effect**: Hold a direction to move and press the Whisplay button to fire. Hold the Whisplay button to return to the daemon desktop.
+
+#### `pacman.py`
+
+  * **Function**: Whisplay Joy-only Pac-Man game with a clockwise-rotated landscape, pellets, power pellets, chasing ghosts, levels, lives, scores, and sound effects.
+  * **Usage**:
+    ```shell
+    cd example
+    sudo python3 pacman.py
+    ```
+    **Effect**: Use the direction pad to navigate the maze and the Whisplay button to start, continue, or restart. Hold the Whisplay button to return to the daemon desktop.
 
 
 **Note: This software currently supports:**

@@ -227,7 +227,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
 
 ## 示例程序
 
-`example` 目录下提供 4 个示例程序，如果你正在使用whisplay-daemon，你可以直接在 daemon 的桌面上看到它们的入口；如果没有使用 daemon，可以直接运行这些脚本来测试硬件功能和体验示例应用。
+`example` 目录下提供 6 个示例程序，如果你正在使用whisplay-daemon，你可以直接在 daemon 的桌面上看到它们的入口；如果没有使用 daemon，可以直接运行这些脚本来测试硬件功能和体验示例应用。
 
 #### `run_test.sh`
 
@@ -279,6 +279,26 @@ tail -f ~/.whisplay-daemon/daemon-app.log
     sudo python3 jump_game.py
     ```
     **效果**: 按住蓄力、松开跳跃，画面和性能针对 Pi Zero 2W 做了优化。
+
+#### `tank_battle.py`
+
+  * **功能**: 仅限 Whisplay Joy 的坦克大战小游戏，屏幕顺时针旋转为横屏显示，包含音效、可破坏砖墙、绿化带和河流。
+  * **使用方法**:
+    ```shell
+    cd example
+    sudo python3 tank_battle.py
+    ```
+    **效果**: 按住方向键移动，按 Whisplay 按钮发射炮弹；长按 Whisplay 按钮返回 daemon 桌面。
+
+#### `pacman.py`
+
+  * **功能**: 仅限 Whisplay Joy 的 Pac-Man 小游戏，屏幕顺时针旋转为横屏显示，包含普通豆、能量豆、幽灵追逐、关卡、生命、分数和音效。
+  * **使用方法**:
+    ```shell
+    cd example
+    sudo python3 pacman.py
+    ```
+    **效果**: 使用方向键在迷宫中移动，按 Whisplay 按钮开始、进入下一关或重新开始；长按 Whisplay 按钮返回 daemon 桌面。
 
 
 **注意：本软件目前支持：**

@@ -28,6 +28,7 @@ except ImportError:
 
 from daemon_shared import AUTO_MODEL, resolve_runtime_config
 from whisplay_daemon import WhisplayDaemon
+from daemon_models import AppRecord
 from whisplay import WhisplayBoard
 from whisplay_client import WhisplayDaemonProxy
 
@@ -143,6 +144,34 @@ class JoyConfigTests(unittest.TestCase):
         self.assertTrue(joystick["payload"]["state"]["up"])
         self.assertEqual(motion["payload"]["acceleration_g"], [0.1, 0.2, 0.9])
         self.assertEqual(motion["payload"]["angular_rate_dps"], [1.0, 2.0, 3.0])
+
+    def test_model_restricted_app_is_only_listed_on_matching_hardware(self):
+        tank = AppRecord(
+            app_id="whisplay-tank-battle",
+            display_name="Tank Battle",
+            supported_models=("whisplay-joy",),
+        )
+        common = AppRecord(app_id="common", display_name="Common")
+        daemon = WhisplayDaemon.__new__(WhisplayDaemon)
+        daemon.apps = {tank.app_id: tank, common.app_id: common}
+
+        daemon.model = "whisplay"
+        self.assertEqual([app.app_id for app in daemon._app_list()], ["common"])
+
+        daemon.model = "whisplay-joy"
+        self.assertEqual(
+            {app.app_id for app in daemon._app_list()},
+            {"common", "whisplay-tank-battle"},
+        )
+
+    def test_supported_models_are_normalized(self):
+        daemon = WhisplayDaemon.__new__(WhisplayDaemon)
+        self.assertEqual(
+            daemon._normalize_supported_models(
+                [" WHISPLAY-JOY ", "whisplay-joy", "whisplay-plus"]
+            ),
+            ("whisplay-joy", "whisplay-plus"),
+        )
 
 
 class JoyInteractionTests(unittest.TestCase):
