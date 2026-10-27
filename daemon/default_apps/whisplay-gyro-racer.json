@@ -1,0 +1,18 @@
+{
+  "app_id": "whisplay-gyro-racer",
+  "display_name": "Gyro Racer",
+  "icon": "GR",
+  "launch_command": "python3 gyro_racer.py",
+  "cwd": "__EXAMPLE_DIR__",
+  "env": {
+    "WHISPLAY_APP_ID": "whisplay-gyro-racer",
+    "SDL_AUDIODRIVER": "alsa",
+    "AUDIODEV": "whisplaysound"
+  },
+  "exit_gesture": "none",
+  "priority": 28,
+  "use_daemon_default_log": true,
+  "supported_models": [
+    "whisplay-joy"
+  ]
+}

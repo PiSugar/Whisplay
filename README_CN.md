@@ -227,7 +227,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
 
 ## 示例程序
 
-`example` 目录下提供 6 个示例程序，如果你正在使用whisplay-daemon，你可以直接在 daemon 的桌面上看到它们的入口；如果没有使用 daemon，可以直接运行这些脚本来测试硬件功能和体验示例应用。
+`example` 目录下提供 7 个示例程序，如果你正在使用whisplay-daemon，你可以直接在 daemon 的桌面上看到它们的入口；如果没有使用 daemon，可以直接运行这些脚本来测试硬件功能和体验示例应用。
 
 #### `run_test.sh`
 
@@ -299,6 +299,16 @@ tail -f ~/.whisplay-daemon/daemon-app.log
     sudo python3 pacman.py
     ```
     **效果**: 使用方向键在迷宫中移动，按 Whisplay 按钮开始、进入下一关或重新开始；长按 Whisplay 按钮返回 daemon 桌面。
+
+#### `gyro_racer.py`
+
+  * **功能**: 仅限 Whisplay Joy 的软件 3D 赛车游戏，包含透视投影道路网格、精细 3D 赛车、QMI8658 倾斜辅助转向、车流、碰撞爆炸、氮气、音效和实时陀螺仪状态指示器。
+  * **使用方法**:
+    ```shell
+    cd example
+    sudo python3 gyro_racer.py
+    ```
+    **效果**: 油门自动加速；方向键下控制刹车，左/右控制基础转向，倾斜 Joy 辅助转向。按 Whisplay 按钮释放氮气；按 Joy Center 打开游戏菜单，可继续游戏或返回 daemon 桌面。
 
 
 **注意：本软件目前支持：**

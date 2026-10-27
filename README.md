@@ -225,7 +225,7 @@ The repo root is organized by responsibility:
 
 ## Example Programs
 
-The `example` directory contains 6 end-user demo programs. If you are using whisplay-daemon, you can see their entries directly on the daemon desktop; if not using the daemon, you can run these scripts directly to test hardware functions and experience the demo applications.
+The `example` directory contains 7 end-user demo programs. If you are using whisplay-daemon, you can see their entries directly on the daemon desktop; if not using the daemon, you can run these scripts directly to test hardware functions and experience the demo applications.
 
 #### `run_test.sh`
 
@@ -296,6 +296,16 @@ The `example` directory contains 6 end-user demo programs. If you are using whis
     sudo python3 pacman.py
     ```
     **Effect**: Use the direction pad to navigate the maze and the Whisplay button to start, continue, or restart. Hold the Whisplay button to return to the daemon desktop.
+
+#### `gyro_racer.py`
+
+  * **Function**: Whisplay Joy-only software-3D racing game with a perspective-projected road mesh, detailed 3D cars, QMI8658 tilt-assisted steering, traffic, explosions, nitro, sound effects, and a live gyro status indicator.
+  * **Usage**:
+    ```shell
+    cd example
+    sudo python3 gyro_racer.py
+    ```
+    **Effect**: Throttle is automatic. Use Down to brake, Left/Right for steering, and tilt the Joy for steering assistance. Press the Whisplay button for nitro. Press Joy Center to open the game menu, where you can resume or return to the daemon desktop.
 
 
 **Note: This software currently supports:**
