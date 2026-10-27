@@ -288,7 +288,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
     cd example
     sudo python3 tank_battle.py
     ```
-    **效果**: 按住方向键移动，按 Whisplay 按钮发射炮弹；长按 Whisplay 按钮返回 daemon 桌面。
+    **效果**: 按住方向键移动，按 Whisplay 按钮发射炮弹；按 Joy Center 打开游戏菜单，可继续游戏或返回 daemon 桌面。
 
 #### `pacman.py`
 
@@ -298,7 +298,7 @@ tail -f ~/.whisplay-daemon/daemon-app.log
     cd example
     sudo python3 pacman.py
     ```
-    **效果**: 使用方向键在迷宫中移动，按 Whisplay 按钮开始、进入下一关或重新开始；长按 Whisplay 按钮返回 daemon 桌面。
+    **效果**: 使用方向键在迷宫中移动，按 Whisplay 按钮开始、进入下一关或重新开始；按 Joy Center 打开游戏菜单，可继续游戏或返回 daemon 桌面。
 
 #### `gyro_racer.py`
 

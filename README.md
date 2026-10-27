@@ -285,7 +285,7 @@ The `example` directory contains 7 end-user demo programs. If you are using whis
     cd example
     sudo python3 tank_battle.py
     ```
-    **Effect**: Hold a direction to move and press the Whisplay button to fire. Hold the Whisplay button to return to the daemon desktop.
+    **Effect**: Hold a direction to move and press the Whisplay button to fire. Press Joy Center to open the game menu, where you can resume or return to the daemon desktop.
 
 #### `pacman.py`
 
@@ -295,7 +295,7 @@ The `example` directory contains 7 end-user demo programs. If you are using whis
     cd example
     sudo python3 pacman.py
     ```
-    **Effect**: Use the direction pad to navigate the maze and the Whisplay button to start, continue, or restart. Hold the Whisplay button to return to the daemon desktop.
+    **Effect**: Use the direction pad to navigate the maze and the Whisplay button to start, continue, or restart. Press Joy Center to open the game menu, where you can resume or return to the daemon desktop.
 
 #### `gyro_racer.py`
 

@@ -9,7 +9,7 @@
     "SDL_AUDIODRIVER": "alsa",
     "AUDIODEV": "whisplaysound"
   },
-  "exit_gesture": "long_press",
+  "exit_gesture": "none",
   "priority": 30,
   "use_daemon_default_log": true,
   "supported_models": [

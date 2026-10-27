@@ -283,7 +283,7 @@ class PacManGame:
             app_id=os.getenv("WHISPLAY_APP_ID", "whisplay-pacman"),
             display_name="Pac-Man",
             icon="PM",
-            exit_gesture="long_press",
+            exit_gesture="none",
             priority=29,
             use_daemon_default_log=True,
             supported_models=(WHISPLAY_JOY_MODEL,),
@@ -301,6 +301,9 @@ class PacManGame:
         self.lives = 3
         self.level = 1
         self.state = "ready"
+        self.menu_open = False
+        self.menu_selection = 0
+        self.menu_opened_at = 0.0
         self.current_direction = "left"
         self.desired_direction = "left"
         self.power_until = 0.0
@@ -332,6 +335,8 @@ class PacManGame:
 
     def _on_button_press(self):
         with self.lock:
+            if self.menu_open:
+                return
             if self.state == "ready":
                 self.state = "playing"
                 self.sounds.play("start")
@@ -345,14 +350,42 @@ class PacManGame:
                 self.sounds.play("start")
 
     def _on_direction_press(self, physical_direction: str):
-        direction = ROTATED_CONTROL_DIRECTION.get(physical_direction)
-        if direction is None:
-            return
         with self.lock:
+            if physical_direction == "center":
+                self._handle_menu_center()
+                return
+            direction = ROTATED_CONTROL_DIRECTION.get(physical_direction)
+            if direction is None:
+                return
+            if self.menu_open:
+                if direction in {"up", "down"}:
+                    self.menu_selection = 1 - self.menu_selection
+                return
             self.desired_direction = direction
             if self.state == "ready":
                 self.state = "playing"
                 self.sounds.play("start")
+
+    def _handle_menu_center(self):
+        if not self.menu_open:
+            self.menu_open = True
+            self.menu_selection = 0
+            self.menu_opened_at = time.monotonic()
+            return
+        if self.menu_selection == 1:
+            self.running = False
+            return
+        self._resume_from_menu()
+
+    def _resume_from_menu(self):
+        paused_for = max(0.0, time.monotonic() - self.menu_opened_at)
+        self.menu_open = False
+        self.menu_opened_at = 0.0
+        if self.power_until > 0.0:
+            self.power_until += paused_for
+        for ghost in self.ghosts:
+            if ghost.respawn_at > 0.0:
+                ghost.respawn_at += paused_for
 
     def _reset_game(self):
         self.score = 0
@@ -534,6 +567,8 @@ class PacManGame:
             return
 
     def _update(self, now: float, dt: float):
+        if self.menu_open:
+            return
         if self.state != "playing":
             return
         self._update_pacman(now, dt)
@@ -632,6 +667,34 @@ class PacManGame:
         draw.text((title_x, 107), title, font=self.font, fill=(255, 219, 44))
         draw.text((subtitle_x, 128), subtitle, font=self.font, fill=(242, 242, 230))
 
+    def _draw_game_menu(self, draw: ImageDraw.ImageDraw):
+        draw_rounded_rectangle(
+            draw,
+            (67, 68, 213, 174),
+            radius=9,
+            fill=(5, 8, 22),
+            outline=(255, 219, 44),
+            width=2,
+        )
+        title = "GAME MENU"
+        draw.text((140 - len(title) * 3, 78), title, font=self.font, fill=(255, 219, 44))
+        for index, label in enumerate(("RESUME", "EXIT TO HOME")):
+            top = 101 + index * 27
+            selected = index == self.menu_selection
+            if selected:
+                draw_rounded_rectangle(
+                    draw,
+                    (82, top - 4, 198, top + 15),
+                    radius=4,
+                    fill=(91, 76, 18),
+                    outline=(255, 231, 92),
+                    width=1,
+                )
+            color = (255, 248, 209) if selected else (152, 174, 181)
+            draw.text((140 - len(label) * 3, top + 1), label, font=self.font, fill=color)
+        hint = "UP/DOWN  CENTER SELECT"
+        draw.text((140 - len(hint) * 3, 159), hint, font=self.font, fill=(132, 178, 193))
+
     def render(self, now: float):
         image = Image.new("RGB", (LOGICAL_WIDTH, LOGICAL_HEIGHT))
         draw = ImageDraw.Draw(image)
@@ -640,6 +703,8 @@ class PacManGame:
         for ghost in self.ghosts:
             self._draw_ghost(draw, ghost, now)
         self._draw_hud(draw)
+        if self.menu_open:
+            self._draw_game_menu(draw)
         transpose = getattr(Image, "Transpose", Image)
         physical_image = image.transpose(transpose.ROTATE_270)
         frame = image_to_rgb565_bytes(physical_image)

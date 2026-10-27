@@ -245,7 +245,7 @@ class TankBattleGame:
             app_id=os.getenv("WHISPLAY_APP_ID", "whisplay-tank-battle"),
             display_name="Tank Battle",
             icon="TB",
-            exit_gesture="long_press",
+            exit_gesture="none",
             priority=30,
             use_daemon_default_log=True,
             supported_models=(WHISPLAY_JOY_MODEL,),
@@ -259,6 +259,9 @@ class TankBattleGame:
         self.sounds = SoundEffects()
         self.font = ImageFont.load_default()
         self.rng = random.Random()
+        self.menu_open = False
+        self.menu_selection = 0
+        self.menu_opened_at = 0.0
         self.pressed_directions: list[str] = []
         self.last_player_shot_at = 0.0
         self.score = 0
@@ -290,10 +293,17 @@ class TankBattleGame:
             self.running = False
 
     def _on_direction_press(self, physical_direction: str):
-        direction = ROTATED_CONTROL_DIRECTION.get(physical_direction)
-        if direction is None:
-            return
         with self.lock:
+            if physical_direction == "center":
+                self._handle_menu_center()
+                return
+            direction = ROTATED_CONTROL_DIRECTION.get(physical_direction)
+            if direction is None:
+                return
+            if self.menu_open:
+                if direction in {"up", "down"}:
+                    self.menu_selection = 1 - self.menu_selection
+                return
             if direction in self.pressed_directions:
                 self.pressed_directions.remove(direction)
             self.pressed_directions.append(direction)
@@ -309,6 +319,8 @@ class TankBattleGame:
 
     def _on_fire(self):
         with self.lock:
+            if self.menu_open:
+                return
             if self.game_over:
                 self._reset_game()
                 return
@@ -318,6 +330,30 @@ class TankBattleGame:
             self.last_player_shot_at = now
             self._spawn_bullet(self.player)
             self.sounds.play("shoot")
+
+    def _handle_menu_center(self):
+        if not self.menu_open:
+            self.menu_open = True
+            self.menu_selection = 0
+            self.menu_opened_at = time.monotonic()
+            self.pressed_directions.clear()
+            return
+        if self.menu_selection == 1:
+            self.running = False
+            return
+        self._resume_from_menu()
+
+    def _resume_from_menu(self):
+        paused_for = max(0.0, time.monotonic() - self.menu_opened_at)
+        self.menu_open = False
+        self.menu_opened_at = 0.0
+        if self.last_player_shot_at > 0.0:
+            self.last_player_shot_at += paused_for
+        if self.message_until > 0.0:
+            self.message_until += paused_for
+        for enemy in self.enemies:
+            enemy.decision_until += paused_for
+            enemy.next_shot_at += paused_for
 
     def _reset_game(self):
         self.map_tiles = [list(row) for row in MAP_TEMPLATE]
@@ -480,6 +516,8 @@ class TankBattleGame:
             self.game_over = True
 
     def _update(self, now: float, dt: float):
+        if self.menu_open:
+            return
         if self.game_over:
             return
         self._update_player(dt)
@@ -576,6 +614,34 @@ class TankBattleGame:
             draw.text((101, 105), title, font=self.font, fill=(245, 216, 62))
             draw.text((91, 124), "BUTTON TO RESTART", font=self.font, fill=(248, 239, 216))
 
+    def _draw_game_menu(self, draw: ImageDraw.ImageDraw):
+        draw_rounded_rectangle(
+            draw,
+            (67, 68, 213, 174),
+            radius=9,
+            fill=(25, 32, 30),
+            outline=(245, 216, 62),
+            width=2,
+        )
+        title = "GAME MENU"
+        draw.text((140 - len(title) * 3, 78), title, font=self.font, fill=(245, 216, 62))
+        for index, label in enumerate(("RESUME", "EXIT TO HOME")):
+            top = 101 + index * 27
+            selected = index == self.menu_selection
+            if selected:
+                draw_rounded_rectangle(
+                    draw,
+                    (82, top - 4, 198, top + 15),
+                    radius=4,
+                    fill=(96, 84, 38),
+                    outline=(255, 232, 117),
+                    width=1,
+                )
+            color = (255, 248, 209) if selected else (160, 174, 166)
+            draw.text((140 - len(label) * 3, top + 1), label, font=self.font, fill=color)
+        hint = "UP/DOWN  CENTER SELECT"
+        draw.text((140 - len(hint) * 3, 159), hint, font=self.font, fill=(173, 191, 178))
+
     def render(self):
         image = Image.new("RGB", (LOGICAL_WIDTH, LOGICAL_HEIGHT))
         draw = ImageDraw.Draw(image)
@@ -589,6 +655,8 @@ class TankBattleGame:
             draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill=(255, 246, 166), outline=(70, 51, 32))
         self._draw_hedge_canopy(draw)
         self._draw_hud(draw)
+        if self.menu_open:
+            self._draw_game_menu(draw)
         transpose = getattr(Image, "Transpose", Image)
         physical_image = image.transpose(transpose.ROTATE_270)
         frame = image_to_rgb565_bytes(physical_image)
