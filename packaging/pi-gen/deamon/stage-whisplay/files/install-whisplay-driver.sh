@@ -55,5 +55,10 @@ fi
 sed -i 's/^depmod -a$/depmod -a "$KVER"/' "$installer"
 for target_kver in "${target_kernels[@]}"; do
   echo "Installing Whisplay sound card driver for kernel ${target_kver}"
-  WHISPLAY_TARGET_KVER="$target_kver" PATH="$fakebin:$PATH" bash "$installer"
+  # Release images must load the sound-card overlay from config.txt.  Do not
+  # let a HAT EEPROM visible to the build environment remove that setting.
+  WHISPLAY_FORCE_CONFIG_OVERLAY=1 \
+    WHISPLAY_TARGET_KVER="$target_kver" \
+    PATH="$fakebin:$PATH" \
+    bash "$installer"
 done
